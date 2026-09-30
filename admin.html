@@ -804,8 +804,8 @@
       const now = Date.now();
       const timeSincePing = now - (focused.lastReceivedAt || 0);
 
-      // Alguma aba está ativamente no primeiro plano com sinal recente?
-      const anyForeground = activeList.some(c => c.isTabActive === true && (now - (c.lastReceivedAt || 0)) < 2300);
+      // Alguma aba está ativamente no primeiro plano com sinal recente? (5s de folga pro heartbeat de 2s)
+      const anyForeground = activeList.some(c => c.isTabActive === true && (now - (c.lastReceivedAt || 0)) < 5000);
 
       const timeoutLimit = (focused.isTabActive === false) ? 120000 : 12000;
       if (focused.isOnline === false || timeSincePing > timeoutLimit) {
