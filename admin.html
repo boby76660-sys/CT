@@ -58,9 +58,8 @@
       </div>
 
       <!-- Chassis do Aparelho (Simula o smartphone/tela do leitor) -->
-      <div id="deviceChassis" class="device-chassis-outer" style="width: 390px; height: 844px;">
-        <div class="device-island" id="deviceIsland"></div>
-        <div class="device-screen-frame">
+      <div id="deviceChassis" class="device-chassis-outer">
+        <div class="device-screen-frame" style="width: 390px; height: 844px;">
           <iframe id="mirrorIframe" class="mirror-iframe" src="index.html?session=leitor-principal&mirror=1"></iframe>
         </div>
       </div>
@@ -214,6 +213,10 @@
       conectar();
     });
 
+    const screenFrame = document.querySelector('.device-screen-frame');
+    let appliedWidth = 0;
+    let appliedHeight = 0;
+
     // Calcula dispositivo provável baseado nas dimensões
     function estimarDispositivo(w, h) {
       if (w <= 430 && h <= 950) return 'Smartphone (iOS / Android)';
@@ -223,33 +226,27 @@
       return 'Dispositivo Desktop ou Janela Redimensionada';
     }
 
-    // Ajusta o tamanho e escala do mockup
+    // Ajusta o tamanho e escala do mockup com precisão milimétrica 1:1
     function recalcularEscalaMockup(width, height) {
       if (!width || !height) return;
 
-      deviceChassis.style.width = width + 'px';
-      deviceChassis.style.height = height + 'px';
-
-      // Mostra a dynamic island apenas em telas móveis verticais
-      if (width <= 480) {
-        deviceIsland.style.display = 'flex';
-        deviceChassis.style.borderRadius = '46px';
-      } else {
-        deviceIsland.style.display = 'none';
-        deviceChassis.style.borderRadius = '16px';
-      }
+      // Aplica a largura e altura EXATAS diretamente na tela interna do leitor
+      screenFrame.style.width = width + 'px';
+      screenFrame.style.height = height + 'px';
 
       if (chkAutoFit.checked) {
-        const stageH = stageContainer.clientHeight - 120; // margem para toolbar
-        const stageW = stageContainer.clientWidth - 80;
+        const stageH = stageContainer.clientHeight - 90; // espaço livre no palco
+        const stageW = stageContainer.clientWidth - 40;
+        const totalW = width + 20; // 8px de moldura externa
+        const totalH = height + 20;
 
-        const scaleY = stageH / height;
-        const scaleW = stageW / width;
+        const scaleY = stageH / totalH;
+        const scaleW = stageW / totalW;
         let scale = Math.min(scaleY, scaleW);
 
-        // Se a tela dele couber naturalmente sem escala, mantém 1
+        // Não aumenta além de 100%, reduz proporcionalmente apenas se necessário para caber na tela
         if (scale > 1) scale = 1;
-        scale = Math.max(0.25, scale); // mínimo razoável
+        scale = Math.max(0.2, scale);
 
         deviceChassis.style.transform = `scale(${scale})`;
         deviceChassis.style.transformOrigin = 'center center';
@@ -259,14 +256,14 @@
     }
 
     window.addEventListener('resize', () => {
-      if (lastPayload && lastPayload.viewport) {
-        recalcularEscalaMockup(lastPayload.viewport.width, lastPayload.viewport.height);
+      if (appliedWidth && appliedHeight) {
+        recalcularEscalaMockup(appliedWidth, appliedHeight);
       }
     });
 
     chkAutoFit.addEventListener('change', () => {
-      if (lastPayload && lastPayload.viewport) {
-        recalcularEscalaMockup(lastPayload.viewport.width, lastPayload.viewport.height);
+      if (appliedWidth && appliedHeight) {
+        recalcularEscalaMockup(appliedWidth, appliedHeight);
       }
     });
 
@@ -312,7 +309,13 @@
         infoRatio.textContent = (width / height).toFixed(2) + ' : 1';
         infoDeviceGuess.textContent = estimarDispositivo(width, height);
 
-        recalcularEscalaMockup(width, height);
+        // Estabilidade: só recalcula a estrutura se a dimensão mudar de verdade (ex: girar tela)
+        // Ignora oscilações de 40px no scroll causadas pela barra de navegação móvel
+        if (width !== appliedWidth || Math.abs(height - appliedHeight) > 60) {
+          appliedWidth = width;
+          appliedHeight = height;
+          recalcularEscalaMockup(width, height);
+        }
       }
 
       // 4. Métricas de Scroll
@@ -320,22 +323,23 @@
         infoScrollY.textContent = `${payload.scroll.y} px`;
         infoMaxScroll.textContent = `${payload.scroll.maxY} px`;
 
-        // 5. Rola o espelho exatamente para o mesmo pixel!
+        // 5. Rola o espelho instantaneamente em 60fps
         if (chkAutoScroll.checked && mirrorIframe.contentWindow) {
           try {
             mirrorIframe.contentWindow.scrollTo({
               top: payload.scroll.y,
               behavior: 'auto'
             });
-          } catch (e) {
-            console.warn('Não foi possível rolar o iframe:', e);
-          }
+          } catch (e) {}
         }
       }
 
       // 6. Trecho em foco
       if (payload.activeSection && payload.activeSection.textSnippet) {
-        readingSnippet.innerHTML = `<strong>Seção ${payload.activeSection.index}/${payload.activeSection.total}:</strong><br>"${payload.activeSection.textSnippet}"`;
+        const snippetHtml = `<strong>Seção ${payload.activeSection.index}/${payload.activeSection.total}:</strong><br>"${payload.activeSection.textSnippet}"`;
+        if (readingSnippet.innerHTML !== snippetHtml) {
+          readingSnippet.innerHTML = snippetHtml;
+        }
       }
     }
 

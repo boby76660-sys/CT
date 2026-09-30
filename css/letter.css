@@ -16,10 +16,30 @@
   --font-signature: 'Great Vibes', cursive;
 }
 
+html {
+  box-sizing: border-box;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+/* Modo espelho no admin: remove barra de rolagem cinza do Windows que roubava 17px de largura */
+html.mirror-mode,
+body.mirror-mode {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+body.mirror-mode::-webkit-scrollbar,
+html.mirror-mode::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 body {

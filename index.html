@@ -126,6 +126,8 @@
     if (!isMirrorMode) {
       startReaderTracking(sessionId);
     } else {
+      document.documentElement.classList.add('mirror-mode');
+      document.body.classList.add('mirror-mode');
       document.body.style.background = '#f5eedf';
     }
   </script>

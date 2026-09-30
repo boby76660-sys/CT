@@ -164,12 +164,12 @@ body {
   outline: none;
 }
 
-/* Layout Principal: 2 Colunas */
+/* Layout Principal: 2 Colunas Fixas */
 .admin-workspace {
   display: grid;
   grid-template-columns: 1fr 380px;
-  flex: 1;
-  min-height: calc(100vh - 65px);
+  height: calc(100vh - 65px);
+  max-height: calc(100vh - 65px);
   overflow: hidden;
 }
 
@@ -179,10 +179,10 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
+  padding: 1.5rem;
   background: radial-gradient(circle at 50% 20%, #151e30 0%, #0b0f19 80%);
   position: relative;
-  overflow: auto;
+  overflow: hidden; /* Nunca mostra scrollbar aqui para evitar saltos de layout */
 }
 
 .simulator-toolbar {
@@ -210,51 +210,31 @@ body {
 /* O MOCKUP DO DISPOSITIVO REAL */
 .device-chassis-outer {
   position: relative;
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: none; /* ZERO transição: atualizações em 60fps sem oscilações ou pulos */
   box-shadow: 
     0 25px 60px -15px rgba(0, 0, 0, 0.75),
     0 0 0 1px rgba(255, 255, 255, 0.1),
-    0 0 40px rgba(59, 130, 246, 0.15);
+    0 0 35px rgba(59, 130, 246, 0.15);
   background: #171b24;
-  border-radius: 46px;
-  padding: 12px;
+  border-radius: 28px;
+  padding: 8px; /* Moldura fina externa que não espreme o iframe */
   border: 2px solid #2b3345;
+  display: inline-flex;
+  flex-direction: column;
+  flex-shrink: 0;
 }
 
-/* Notch / Dynamic Island */
+/* Notch / Dynamic Island desativado para nunca tampar o texto */
 .device-island {
-  position: absolute;
-  top: 18px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 90px;
-  height: 22px;
-  background: #000;
-  border-radius: 20px;
-  z-index: 30;
-  pointer-events: none;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding-right: 12px;
-}
-
-.device-island::after {
-  content: "";
-  width: 8px;
-  height: 8px;
-  background: #111a2e;
-  border-radius: 50%;
-  box-shadow: inset 0 0 2px #3b82f6;
+  display: none !important;
 }
 
 .device-screen-frame {
-  width: 100%;
-  height: 100%;
   background: #fdfbf7;
-  border-radius: 36px;
+  border-radius: 20px;
   overflow: hidden;
   position: relative;
+  /* Largura e altura exatas aplicadas diretamente aqui */
 }
 
 .mirror-iframe {
@@ -282,10 +262,13 @@ body {
   background: var(--admin-surface);
   border-left: 1px solid var(--admin-border);
   padding: 1.5rem;
-  overflow-y: auto;
+  overflow-y: scroll; /* Garante que a barra de rolagem não altere a largura do palco */
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
+  width: 380px;
+  max-width: 380px;
+  flex-shrink: 0;
 }
 
 .sidebar-card {
@@ -413,18 +396,24 @@ body {
   margin-top: 2px;
 }
 
-/* Trecho de Leitura Atual */
+/* Trecho de Leitura Atual com altura estritamente fixa */
 .current-reading-snippet {
   background: rgba(11, 15, 25, 0.75);
   border-left: 3px solid var(--admin-accent);
   padding: 10px 12px;
   border-radius: 0 8px 8px 0;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: #cbd5e1;
   font-style: italic;
-  line-height: 1.5;
+  line-height: 1.45;
   margin-top: 0.5rem;
-  min-height: 60px;
+  height: 68px;
+  min-height: 68px;
+  max-height: 68px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
 }
 
 /* Aviso de Configuração do Firebase */
