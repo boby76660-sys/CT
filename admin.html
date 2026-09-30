@@ -279,9 +279,14 @@
     let activeReadingSeconds = 0;
     let currentSectionSeconds = 0;
     let lastSectionIndex = null;
+    let currentLoggedChapter = null;
     let maxScrollReached = 0;
     let isReReading = false;
     let timelineEvents = [];
+    let lastLoggedEvent = { text: '', time: 0 };
+    let lastLoggedSection = null;
+    let lastPresenceLogged = null;
+    let hasLoggedInitialOpen = false;
     let hasLoggedCompletion = false;
     let lastHighlightedElement = null;
 
@@ -297,12 +302,35 @@
     }
 
     function adicionarEventoLinhaDoTempo(icone, texto, tipo = 'normal') {
+      const now = Date.now();
+
+      // 1. Nunca insere exatamente a mesma mensagem consecutiva
+      if (timelineEvents.length > 0 && timelineEvents[0].texto === texto) {
+        return;
+      }
+
+      // 2. Anti-spam global: nunca adiciona o mesmo texto repetido em menos de 20 segundos
+      if (lastLoggedEvent.text === texto && (now - lastLoggedEvent.time) < 20000) {
+        return;
+      }
+
+      // 3. Seções: nunca repete o mesmo título de seção
+      if (tipo === 'secao' || texto.startsWith('Entrou na')) {
+        if (lastLoggedSection === texto) return;
+        lastLoggedSection = texto;
+      }
+
+      lastLoggedEvent = { text: texto, time: now };
       const timeStr = getNowFormatted();
       timelineEvents.unshift({ timeStr, icone, texto, tipo });
 
+      if (timelineEvents.length > 50) {
+        timelineEvents.pop();
+      }
+
       eventCountBadge.textContent = `${timelineEvents.length} eventos`;
 
-      timelineList.innerHTML = timelineEvents.slice(0, 18).map(ev => {
+      timelineList.innerHTML = timelineEvents.slice(0, 20).map(ev => {
         let dotClass = 'timeline-dot';
         if (ev.tipo === 'releitura') dotClass += ' highlight';
         else if (ev.tipo === 'pausa') dotClass += ' warning';
@@ -481,7 +509,8 @@
         screenOverlay.className = 'screen-status-overlay visible';
         screenOverlayPill.className = 'screen-status-pill offline';
         screenOverlayPill.textContent = 'Leitor Desconectado';
-        if (anterior === 'online' || anterior === 'background') {
+        if ((anterior === 'online' || anterior === 'background') && lastPresenceLogged !== 'offline') {
+          lastPresenceLogged = 'offline';
           adicionarEventoLinhaDoTempo('🔴', 'Fechou o navegador / desconectou', 'pausa');
         }
       } else if (estado === 'background') {
@@ -492,7 +521,8 @@
         screenOverlay.className = 'screen-status-overlay visible';
         screenOverlayPill.className = 'screen-status-pill';
         screenOverlayPill.textContent = 'Aba em Segundo Plano';
-        if (anterior === 'online') {
+        if (anterior === 'online' && lastPresenceLogged !== 'background') {
+          lastPresenceLogged = 'background';
           adicionarEventoLinhaDoTempo('⏸️', 'Pausou a leitura (minimizou o app)', 'pausa');
         }
       } else {
@@ -501,7 +531,8 @@
         readerStatusSub.textContent = 'Interagindo com a carta no momento';
         screenFrame.className = 'device-screen-frame';
         screenOverlay.className = 'screen-status-overlay';
-        if (anterior === 'background') {
+        if ((anterior === 'background' || anterior === 'offline') && lastPresenceLogged !== 'online') {
+          lastPresenceLogged = 'online';
           adicionarEventoLinhaDoTempo('▶️', 'Retomou a leitura da carta', 'normal');
         }
       }
@@ -511,15 +542,70 @@
     // LÓGICA INTELIGENTE DE MULTI-ABAS & CLIENTES
     // ==========================================
 
+    function gerenciarLimpezaClientes() {
+      const now = Date.now();
+      const allIds = Object.keys(clients);
+      if (allIds.length === 0) return;
+
+      const vivos = [];
+      const mortos = [];
+
+      for (const id of allIds) {
+        const c = clients[id];
+        if (!c) continue;
+        const timeSinceSignal = now - (c.lastReceivedAt || 0);
+        const isDead = c.isOnline === false || timeSinceSignal > 7000;
+        if (isDead) {
+          mortos.push({ id, client: c, lastAt: c.lastReceivedAt || 0 });
+        } else {
+          vivos.push({ id, client: c, lastAt: c.lastReceivedAt || 0 });
+        }
+      }
+
+      const dbUrl = isFirebaseConfigured() ? firebaseConfig.databaseURL.replace(/\/$/, '') : null;
+
+      // CENÁRIO 1: Há pelo menos um cliente vivo!
+      // Remove da lista do admin e do banco TODOS os clientes que foram desconectados
+      if (vivos.length > 0) {
+        for (const m of mortos) {
+          delete clients[m.id];
+          if (selectedClientId === m.id) selectedClientId = 'auto';
+          if (focusedClientId === m.id) focusedClientId = null;
+          if (dbUrl) {
+            fetch(`${dbUrl}/sessoes/${encodeURIComponent(currentSessionId)}/clients/${encodeURIComponent(m.id)}.json`, {
+              method: 'DELETE'
+            }).catch(() => {});
+          }
+        }
+      }
+      // CENÁRIO 2: TODOS os clientes estão desligados/desconectados
+      // "se todos forem desligados, mantenha mostrando apenas o último."
+      else if (mortos.length > 1) {
+        mortos.sort((a, b) => b.lastAt - a.lastAt);
+
+        // Mantém apenas o mais recente (mortos[0]) e descarta todos os outros anteriores
+        for (let i = 1; i < mortos.length; i++) {
+          const deadId = mortos[i].id;
+          delete clients[deadId];
+          if (selectedClientId === deadId) selectedClientId = 'auto';
+          if (focusedClientId === deadId) focusedClientId = null;
+          if (dbUrl) {
+            fetch(`${dbUrl}/sessoes/${encodeURIComponent(currentSessionId)}/clients/${encodeURIComponent(deadId)}.json`, {
+              method: 'DELETE'
+            }).catch(() => {});
+          }
+        }
+      }
+    }
+
     function getActiveClientsList() {
       const now = Date.now();
       const list = [];
       for (const [id, c] of Object.entries(clients)) {
         if (!c) continue;
-        // Mede a idade pelo relógio local do Admin para imutabilidade contra desvio de horário
         const timeSinceSignal = now - (c.lastReceivedAt || 0);
-        // Ativo se recebemos sinal nos últimos 12 segundos e não está explicitamente desconectado
-        if (c.isOnline !== false && timeSinceSignal < 12000) {
+        // Ativo se recebemos sinal nos últimos 7 segundos e não está explicitamente desconectado
+        if (c.isOnline !== false && timeSinceSignal <= 7000) {
           list.push(c);
         }
       }
@@ -530,7 +616,7 @@
       const activeList = getActiveClientsList();
 
       if (activeList.length === 0) {
-        // Fallback: pega o cliente mais recente recebido para não zerar a tela
+        // Fallback: pega o último cliente mantido em memória para não zerar a tela
         const all = Object.values(clients);
         if (all.length === 0) return null;
         all.sort((a, b) => (b.lastReceivedAt || 0) - (a.lastReceivedAt || 0));
@@ -593,9 +679,39 @@
       const activeList = getActiveClientsList();
       const count = activeList.length;
 
-      if (count <= 1) {
+      // Se nenhum leitor estiver ativo:
+      if (count === 0) {
+        clientCountBadge.className = 'client-tabs-count-badge offline';
+        clientCountBadge.textContent = 'Desconectado';
+        multiDeviceAlert.style.display = 'none';
+
+        const lastClient = Object.values(clients)[0];
+        const lastLabel = lastClient ? (lastClient.deviceLabel || 'Dispositivo') : null;
+
+        let html = `
+          <button class="client-tab-btn active" data-id="auto" title="Nenhum leitor ativo no momento">
+            <span class="tab-dot offline"></span>
+            <span class="tab-label">Leitor Desconectado</span>
+          </button>
+        `;
+
+        if (lastClient) {
+          html += `
+            <button class="client-tab-btn" data-id="${lastClient.clientId}" title="Último dispositivo conectado">
+              <span class="tab-dot offline"></span>
+              <span class="tab-label">${lastLabel} • Fechado</span>
+            </button>
+          `;
+        }
+
+        clientTabsList.innerHTML = html;
+        return;
+      }
+
+      // Se há 1 dispositivo ativo:
+      if (count === 1) {
         clientCountBadge.className = 'client-tabs-count-badge';
-        clientCountBadge.textContent = count === 1 ? '1 dispositivo' : 'Aguardando';
+        clientCountBadge.textContent = '1 dispositivo';
         multiDeviceAlert.style.display = 'none';
       } else {
         clientCountBadge.className = 'client-tabs-count-badge multi';
@@ -615,7 +731,7 @@
       // Constrói os botões da barra superior
       let html = `
         <button class="client-tab-btn ${selectedClientId === 'auto' ? 'active' : ''}" data-id="auto" title="Focar automaticamente no aparelho que o leitor estiver rolando">
-          <span class="tab-dot ${count > 0 ? 'live' : ''}"></span>
+          <span class="tab-dot live"></span>
           <span class="tab-label">⚡ Foco Automático</span>
         </button>
       `;
@@ -656,6 +772,7 @@
 
     // Watchdog contínuo (250ms) com inteligência multi-dispositivos
     setInterval(() => {
+      gerenciarLimpezaClientes();
       const activeList = getActiveClientsList();
       const focused = resolveFocusedClient();
 
@@ -671,7 +788,7 @@
       // Alguma aba está ativamente no primeiro plano com sinal recente?
       const anyForeground = activeList.some(c => c.isTabActive === true && (now - (c.lastReceivedAt || 0)) < 2300);
 
-      if (focused.isOnline === false || timeSincePing > 8000) {
+      if (focused.isOnline === false || timeSincePing > 7000) {
         atualizarEstadoPresenca('offline');
       } else if (!anyForeground) {
         atualizarEstadoPresenca('background');
@@ -774,9 +891,13 @@
           lastSectionIndex = sectionIdx;
           currentSectionSeconds = 0;
 
-          // Se for título de seção, registra no histórico
+          // Se for título de seção, registra no histórico APENAS uma vez por capítulo
           if (payload.activeSection.tag === 'h2') {
-            adicionarEventoLinhaDoTempo('📖', `Entrou na ${payload.activeSection.textSnippet}`, 'normal');
+            const sectionTitle = payload.activeSection.textSnippet;
+            if (sectionTitle && sectionTitle !== currentLoggedChapter) {
+              currentLoggedChapter = sectionTitle;
+              adicionarEventoLinhaDoTempo('📖', `Entrou na ${sectionTitle}`, 'secao');
+            }
           }
 
           atualizarDestaqueParagrafoNoEspelho(sectionIdx);
@@ -811,15 +932,34 @@
     // Inicialização do ouvinte
     function conectar() {
       transportBadge.textContent = isFirebaseConfigured() ? 'Firebase Realtime' : 'Modo Local (Abas)';
+      let isFirstSnapshot = true;
+
       startAdminListening(currentSessionId, (clientsMap, source, updatedClientId) => {
         clients = clientsMap;
+        gerenciarLimpezaClientes();
+
+        const activeClients = getActiveClientsList();
+
+        // No primeiro snapshot ao carregar a página:
+        if (isFirstSnapshot) {
+          isFirstSnapshot = false;
+          for (const c of Object.values(clients)) {
+            if (c && c.clientId) knownClients.add(c.clientId);
+          }
+          if (activeClients.length > 0) {
+            const first = activeClients[0];
+            adicionarEventoLinhaDoTempo('🚀', `Conectado ao leitor (${first.deviceLabel || 'Dispositivo'})`, 'sucesso');
+          }
+          atualizarInterfaceCompleta(source);
+          return;
+        }
 
         // Monitora novos clientes para registrar na linha do tempo
         for (const [cId, c] of Object.entries(clients)) {
           if (!c) continue;
           if (!knownClients.has(cId)) {
             knownClients.add(cId);
-            if (knownClients.size === 1) {
+            if (activeClients.length <= 1) {
               adicionarEventoLinhaDoTempo('🚀', `Abriu a carta (${c.deviceLabel || 'Dispositivo'})`, 'sucesso');
             } else {
               adicionarEventoLinhaDoTempo('👥', `Nova aba/dispositivo conectado: ${c.deviceLabel || 'Dispositivo'}`, 'normal');
@@ -828,7 +968,7 @@
 
           if (c.isOnline === false && !disconnectedClients.has(cId)) {
             disconnectedClients.add(cId);
-            if (getActiveClientsList().length > 0) {
+            if (activeClients.length > 0) {
               adicionarEventoLinhaDoTempo('✕', `Uma das abas foi fechada (${c.deviceLabel || 'Aba'})`, 'pausa');
             }
           } else if (c.isOnline === true && disconnectedClients.has(cId)) {

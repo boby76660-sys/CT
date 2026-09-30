@@ -239,6 +239,16 @@ export function startReaderTracking(sessionId) {
   window.addEventListener('beforeunload', () => {
     clearInterval(heartbeatTimer);
     enviarImediato(false, false);
+
+    // Remove este cliente específico do Firebase ao fechar para não acumular
+    if (dbUrl) {
+      try {
+        fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/clients/${clientId}.json`, {
+          method: 'DELETE',
+          keepalive: true
+        }).catch(() => {});
+      } catch (e) {}
+    }
   });
 
   // Envio inicial imediato
@@ -287,6 +297,9 @@ export function startAdminListening(sessionId, onClientsUpdate) {
                 for (const [cId, cPayload] of Object.entries(parsed.data.clients)) {
                   if (cPayload && typeof cPayload === 'object') {
                     const prev = clientsMap[cId];
+                    const clientTime = (cPayload.meta && cPayload.meta.timestamp) || 0;
+                    const age = now - clientTime;
+                    const lastRecv = (prev && prev.lastReceivedAt) ? prev.lastReceivedAt : (age > 10000 ? clientTime : now);
                     let userAction = now;
                     if (prev && prev.scroll && cPayload.scroll) {
                       const diff = Math.abs(cPayload.scroll.y - prev.scroll.y);
@@ -294,7 +307,7 @@ export function startAdminListening(sessionId, onClientsUpdate) {
                     }
                     clientsMap[cId] = {
                       ...cPayload,
-                      lastReceivedAt: now,
+                      lastReceivedAt: lastRecv,
                       lastUserActionAt: userAction
                     };
                   }
