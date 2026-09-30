@@ -219,10 +219,6 @@ export function startReaderTracking(sessionId) {
     enviarImediato(true, !document.hidden);
   });
 
-  window.addEventListener('blur', () => {
-    enviarImediato(true, false);
-  });
-
   window.addEventListener('focus', () => {
     enviarImediato(true, true);
   });
@@ -255,6 +251,8 @@ export function startReaderTracking(sessionId) {
   enviarImediato(true, !document.hidden);
 }
 
+let currentAdminEventSource = null;
+
 /**
  * Inicia a escuta em tempo real no ADMIN (com suporte a multi-abas e multi-dispositivos)
  */
@@ -262,6 +260,11 @@ export function startAdminListening(sessionId, onClientsUpdate) {
   const isFb = isFirebaseConfigured();
   const dbUrl = isFb ? firebaseConfig.databaseURL.replace(/\/$/, '') : null;
   const clientsMap = {};
+
+  if (currentAdminEventSource) {
+    try { currentAdminEventSource.close(); } catch (e) {}
+    currentAdminEventSource = null;
+  }
 
   // 1. Escuta local via BroadcastChannel
   if (broadcastChannel) {
@@ -283,6 +286,7 @@ export function startAdminListening(sessionId, onClientsUpdate) {
     try {
       const sseUrl = `${dbUrl}/sessoes/${encodeURIComponent(sessionId)}.json`;
       const eventSource = new EventSource(sseUrl);
+      currentAdminEventSource = eventSource;
 
       eventSource.addEventListener('put', (event) => {
         try {
@@ -298,8 +302,10 @@ export function startAdminListening(sessionId, onClientsUpdate) {
                   if (cPayload && typeof cPayload === 'object') {
                     const prev = clientsMap[cId];
                     const clientTime = (cPayload.meta && cPayload.meta.timestamp) || 0;
-                    const age = now - clientTime;
-                    const lastRecv = (prev && prev.lastReceivedAt) ? prev.lastReceivedAt : (age > 10000 ? clientTime : now);
+                    // Se o pacote tem menos de 60 segundos de idade em relação ao now local:
+                    const age = Math.abs(now - clientTime);
+                    const isRecent = age < 60000;
+                    const lastRecv = (prev && prev.lastReceivedAt) ? prev.lastReceivedAt : (isRecent ? now : (now - 60000));
                     let userAction = now;
                     if (prev && prev.scroll && cPayload.scroll) {
                       const diff = Math.abs(cPayload.scroll.y - prev.scroll.y);
@@ -312,14 +318,20 @@ export function startAdminListening(sessionId, onClientsUpdate) {
                     };
                   }
                 }
-              } else if (parsed.data.reader && typeof parsed.data.reader === 'object') {
+              }
+              // Sincroniza também com parsed.data.reader
+              if (parsed.data.reader && typeof parsed.data.reader === 'object') {
                 const r = parsed.data.reader;
                 const cId = r.clientId || 'default_reader';
-                clientsMap[cId] = {
-                  ...r,
-                  lastReceivedAt: now,
-                  lastUserActionAt: now
-                };
+                const clientTime = (r.meta && r.meta.timestamp) || 0;
+                const isRecent = Math.abs(now - clientTime) < 60000;
+                if (!clientsMap[cId]) {
+                  clientsMap[cId] = {
+                    ...r,
+                    lastReceivedAt: isRecent ? now : (now - 60000),
+                    lastUserActionAt: now
+                  };
+                }
               }
               onClientsUpdate(clientsMap, 'Firebase Realtime', null);
             }
@@ -363,6 +375,7 @@ export function startAdminListening(sessionId, onClientsUpdate) {
               userAction = (diff >= 3) ? now : (prev.lastUserActionAt || (now - 30000));
             }
             clientsMap[cId] = {
+              ...(clientsMap[cId] || {}),
               ...r,
               lastReceivedAt: now,
               lastUserActionAt: userAction

@@ -943,7 +943,7 @@
         // No primeiro snapshot ao carregar a página:
         if (isFirstSnapshot) {
           isFirstSnapshot = false;
-          for (const c of Object.values(clients)) {
+          for (const c of activeClients) {
             if (c && c.clientId) knownClients.add(c.clientId);
           }
           if (activeClients.length > 0) {
