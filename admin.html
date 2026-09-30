@@ -42,25 +42,13 @@
     <!-- Palco do Simulador de Aparelho -->
     <section class="simulator-stage" id="stageContainer">
 
-      <div class="simulator-toolbar">
-        <span>Dimensão do Leitor:</span>
-        <span id="dimensionLabel" class="device-viewport-tag">Aguardando leitor... (Padrão: 390 × 844 px)</span>
-        <span style="opacity: 0.3;">|</span>
-        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-          <input type="checkbox" id="chkAutoFit" checked>
-          <span>Ajustar à Tela</span>
-        </label>
-        <span style="opacity: 0.3;">|</span>
-        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-          <input type="checkbox" id="chkAutoScroll" checked>
-          <span>Auto-Rolar Espelho</span>
-        </label>
-      </div>
-
       <!-- Chassis do Aparelho (Simula o smartphone/tela do leitor) -->
       <div id="deviceChassis" class="device-chassis-outer">
-        <div class="device-screen-frame" style="width: 390px; height: 844px;">
+        <div id="deviceScreenFrame" class="device-screen-frame" style="width: 390px; height: 844px;">
           <iframe id="mirrorIframe" class="mirror-iframe" src="index.html?session=leitor-principal&mirror=1"></iframe>
+          <div id="screenOverlay" class="screen-status-overlay">
+            <span id="screenOverlayPill" class="screen-status-pill">Aba em Segundo Plano</span>
+          </div>
         </div>
       </div>
 
@@ -156,11 +144,10 @@
     const btnOpenReader = document.getElementById('btnOpenReader');
     const stageContainer = document.getElementById('stageContainer');
     const deviceChassis = document.getElementById('deviceChassis');
-    const deviceIsland = document.getElementById('deviceIsland');
+    const screenFrame = document.getElementById('deviceScreenFrame');
+    const screenOverlay = document.getElementById('screenOverlay');
+    const screenOverlayPill = document.getElementById('screenOverlayPill');
     const mirrorIframe = document.getElementById('mirrorIframe');
-    const dimensionLabel = document.getElementById('dimensionLabel');
-    const chkAutoFit = document.getElementById('chkAutoFit');
-    const chkAutoScroll = document.getElementById('chkAutoScroll');
     const transportBadge = document.getElementById('transportBadge');
 
     const readerStatusBanner = document.getElementById('readerStatusBanner');
@@ -182,6 +169,8 @@
 
     let lastPayload = null;
     let offlineTimer = null;
+    let appliedWidth = 0;
+    let appliedHeight = 0;
 
     // Atualiza o iframe para a sessão atual
     function recarregarIframe() {
@@ -213,10 +202,6 @@
       conectar();
     });
 
-    const screenFrame = document.querySelector('.device-screen-frame');
-    let appliedWidth = 0;
-    let appliedHeight = 0;
-
     // Calcula dispositivo provável baseado nas dimensões
     function estimarDispositivo(w, h) {
       if (w <= 430 && h <= 950) return 'Smartphone (iOS / Android)';
@@ -234,34 +219,25 @@
       screenFrame.style.width = width + 'px';
       screenFrame.style.height = height + 'px';
 
-      if (chkAutoFit.checked) {
-        const stageH = stageContainer.clientHeight - 90; // espaço livre no palco
-        const stageW = stageContainer.clientWidth - 40;
-        const totalW = width + 20; // 8px de moldura externa
-        const totalH = height + 20;
+      // Auto-Fit adaptativo sempre ativo por padrão
+      const stageH = stageContainer.clientHeight - 40; // margem livre no palco
+      const stageW = stageContainer.clientWidth - 40;
+      const totalW = width + 20; // 8px de moldura externa
+      const totalH = height + 20;
 
-        const scaleY = stageH / totalH;
-        const scaleW = stageW / totalW;
-        let scale = Math.min(scaleY, scaleW);
+      const scaleY = stageH / totalH;
+      const scaleW = stageW / totalW;
+      let scale = Math.min(scaleY, scaleW);
 
-        // Não aumenta além de 100%, reduz proporcionalmente apenas se necessário para caber na tela
-        if (scale > 1) scale = 1;
-        scale = Math.max(0.2, scale);
+      // Não aumenta além de 100%, reduz proporcionalmente apenas se necessário para caber na tela
+      if (scale > 1) scale = 1;
+      scale = Math.max(0.2, scale);
 
-        deviceChassis.style.transform = `scale(${scale})`;
-        deviceChassis.style.transformOrigin = 'center center';
-      } else {
-        deviceChassis.style.transform = 'scale(1)';
-      }
+      deviceChassis.style.transform = `scale(${scale})`;
+      deviceChassis.style.transformOrigin = 'center center';
     }
 
     window.addEventListener('resize', () => {
-      if (appliedWidth && appliedHeight) {
-        recalcularEscalaMockup(appliedWidth, appliedHeight);
-      }
-    });
-
-    chkAutoFit.addEventListener('change', () => {
       if (appliedWidth && appliedHeight) {
         recalcularEscalaMockup(appliedWidth, appliedHeight);
       }
@@ -274,19 +250,31 @@
 
       transportBadge.textContent = transportSource || 'Conectado';
 
-      // 1. Status do Leitor (Ativo / Inativo / Minimizou)
+      // 1. Status do Leitor e efeito visual na tela emulada
       if (!payload.isOnline) {
         readerStatusBanner.className = 'reader-status-banner offline';
         readerStatusTitle.textContent = 'Leitor Desconectado';
         readerStatusSub.textContent = 'A aba da carta foi fechada';
+        screenFrame.className = 'device-screen-frame is-offline';
+        screenOverlay.className = 'screen-status-overlay visible';
+        screenOverlayPill.className = 'screen-status-pill offline';
+        screenOverlayPill.textContent = 'Leitor Desconectado';
       } else if (!payload.isTabActive) {
+        // Escurece a tela quando estiver em segundo plano
         readerStatusBanner.className = 'reader-status-banner background-tab';
         readerStatusTitle.textContent = 'Aba em Segundo Plano';
         readerStatusSub.textContent = 'O leitor alternou para outra aba ou janela';
+        screenFrame.className = 'device-screen-frame is-background';
+        screenOverlay.className = 'screen-status-overlay visible';
+        screenOverlayPill.className = 'screen-status-pill';
+        screenOverlayPill.textContent = 'Aba em Segundo Plano';
       } else {
+        // Volta ao brilho normal quando estiver lendo ao vivo
         readerStatusBanner.className = 'reader-status-banner';
         readerStatusTitle.textContent = 'Lendo Agora (Ao Vivo)';
         readerStatusSub.textContent = 'Interagindo com a carta no momento';
+        screenFrame.className = 'device-screen-frame';
+        screenOverlay.className = 'screen-status-overlay';
       }
 
       // Se não receber atualizações por 10s e estiver marcado como online, sinaliza inatividade
@@ -304,13 +292,11 @@
       // 3. Dimensões e Emulação da Tela
       if (payload.viewport) {
         const { width, height } = payload.viewport;
-        dimensionLabel.textContent = `${width} × ${height} px`;
         infoResolution.textContent = `${width} × ${height}`;
         infoRatio.textContent = (width / height).toFixed(2) + ' : 1';
         infoDeviceGuess.textContent = estimarDispositivo(width, height);
 
         // Estabilidade: só recalcula a estrutura se a dimensão mudar de verdade (ex: girar tela)
-        // Ignora oscilações de 40px no scroll causadas pela barra de navegação móvel
         if (width !== appliedWidth || Math.abs(height - appliedHeight) > 60) {
           appliedWidth = width;
           appliedHeight = height;
@@ -323,8 +309,8 @@
         infoScrollY.textContent = `${payload.scroll.y} px`;
         infoMaxScroll.textContent = `${payload.scroll.maxY} px`;
 
-        // 5. Rola o espelho instantaneamente em 60fps
-        if (chkAutoScroll.checked && mirrorIframe.contentWindow) {
+        // 5. Rola o espelho instantaneamente em 60fps (sempre ativo)
+        if (mirrorIframe.contentWindow) {
           try {
             mirrorIframe.contentWindow.scrollTo({
               top: payload.scroll.y,

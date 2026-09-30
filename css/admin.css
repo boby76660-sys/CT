@@ -185,28 +185,6 @@ body {
   overflow: hidden; /* Nunca mostra scrollbar aqui para evitar saltos de layout */
 }
 
-.simulator-toolbar {
-  position: absolute;
-  top: 16px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: rgba(18, 24, 38, 0.9);
-  padding: 6px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--admin-border);
-  font-size: 0.8rem;
-  color: var(--admin-text-muted);
-  backdrop-filter: blur(8px);
-  z-index: 10;
-}
-
-.device-viewport-tag {
-  color: #60a5fa;
-  font-family: var(--font-mono);
-  font-weight: 600;
-}
-
 /* O MOCKUP DO DISPOSITIVO REAL */
 .device-chassis-outer {
   position: relative;
@@ -224,7 +202,7 @@ body {
   flex-shrink: 0;
 }
 
-/* Notch / Dynamic Island desativado para nunca tampar o texto */
+/* Notch desativado para nunca cobrir o texto */
 .device-island {
   display: none !important;
 }
@@ -234,14 +212,64 @@ body {
   border-radius: 20px;
   overflow: hidden;
   position: relative;
+  transition: filter 0.35s ease, opacity 0.35s ease;
   /* Largura e altura exatas aplicadas diretamente aqui */
 }
 
+/* Escurece a tela quando a aba estiver em segundo plano ou desconectada */
+.device-screen-frame.is-background {
+  filter: brightness(0.42) saturate(0.7);
+}
+
+.device-screen-frame.is-offline {
+  filter: brightness(0.28) grayscale(0.8);
+}
+
+/* Overlay sutil informativo sobre a tela escurecida */
+.screen-status-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(11, 15, 25, 0.35);
+  backdrop-filter: blur(1.5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+  z-index: 50;
+}
+
+.screen-status-overlay.visible {
+  opacity: 1;
+}
+
+.screen-status-pill {
+  background: rgba(245, 158, 11, 0.95);
+  color: #0b0f19;
+  font-weight: 700;
+  font-size: 0.8rem;
+  padding: 8px 16px;
+  border-radius: 999px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-family: var(--font-ui);
+}
+
+.screen-status-pill.offline {
+  background: rgba(239, 68, 68, 0.95);
+  color: #fff;
+}
+
+/* Desativa scroll manual e cliques pelo mouse do computador */
 .mirror-iframe {
   width: 100%;
   height: 100%;
   border: none;
   display: block;
+  pointer-events: none; /* Apenas o leitor no celular comanda a rolagem! */
+  user-select: none;
 }
 
 /* Indicador visual de cursor/scroll sobre o iframe */
