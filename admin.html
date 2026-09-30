@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel de Controle — Espelhamento em Tempo Real</title>
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+
+  <!-- Barra Superior -->
+  <header class="admin-navbar">
+    <div class="admin-logo-group">
+      <div class="admin-badge-live">
+        <span class="live-pulse-dot"></span>
+        <span>Ao Vivo</span>
+      </div>
+      <h1 class="admin-title">Radar do Leitor &bull; Espelho 1:1</h1>
+    </div>
+
+    <div class="admin-controls-group">
+      <div class="session-badge-input">
+        <span>SESSÃO:</span>
+        <input type="text" id="sessionIdInput" value="leitor-principal" title="Identificador único da sessão">
+      </div>
+
+      <button id="btnCopyLink" class="btn-primary" title="Copiar link para enviar ao leitor">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+        Copiar Link do Leitor
+      </button>
+
+      <button id="btnOpenReader" class="btn-secondary" title="Abrir a carta em outra aba para testar">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+        Testar Leitor
+      </button>
+    </div>
+  </header>
+
+  <!-- Espaço de Trabalho Principal -->
+  <main class="admin-workspace">
+
+    <!-- Palco do Simulador de Aparelho -->
+    <section class="simulator-stage" id="stageContainer">
+
+      <div class="simulator-toolbar">
+        <span>Dimensão do Leitor:</span>
+        <span id="dimensionLabel" class="device-viewport-tag">Aguardando leitor... (Padrão: 390 × 844 px)</span>
+        <span style="opacity: 0.3;">|</span>
+        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+          <input type="checkbox" id="chkAutoFit" checked>
+          <span>Ajustar à Tela</span>
+        </label>
+        <span style="opacity: 0.3;">|</span>
+        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+          <input type="checkbox" id="chkAutoScroll" checked>
+          <span>Auto-Rolar Espelho</span>
+        </label>
+      </div>
+
+      <!-- Chassis do Aparelho (Simula o smartphone/tela do leitor) -->
+      <div id="deviceChassis" class="device-chassis-outer" style="width: 390px; height: 844px;">
+        <div class="device-island" id="deviceIsland"></div>
+        <div class="device-screen-frame">
+          <iframe id="mirrorIframe" class="mirror-iframe" src="index.html?session=leitor-principal&mirror=1"></iframe>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Barra Lateral de Telemetria -->
+    <aside class="admin-sidebar">
+
+      <!-- Status do Leitor -->
+      <div class="sidebar-card">
+        <div class="sidebar-card-title">
+          <span>Status de Presença</span>
+          <span id="transportBadge" style="font-size: 0.65rem; color: #60a5fa;">Verificando...</span>
+        </div>
+
+        <div id="readerStatusBanner" class="reader-status-banner offline">
+          <div class="status-dot-large"></div>
+          <div>
+            <div id="readerStatusTitle" class="status-label-main">Aguardando Conexão</div>
+            <div id="readerStatusSub" class="status-label-sub">Envie o link para o leitor abrir a página</div>
+          </div>
+        </div>
+
+        <!-- Barra de Progresso -->
+        <div class="progress-container">
+          <div class="progress-header">
+            <span>Progresso da Leitura:</span>
+            <strong id="progressPercentLabel" style="color: #60a5fa;">0%</strong>
+          </div>
+          <div class="progress-bar-bg">
+            <div id="progressBarFill" class="progress-bar-fill"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trecho que o Leitor está visualizando -->
+      <div class="sidebar-card">
+        <div class="sidebar-card-title">Trecho em Foco na Tela</div>
+        <div id="readingSnippet" class="current-reading-snippet">
+          O leitor ainda não começou a ler ou está no topo da carta.
+        </div>
+      </div>
+
+      <!-- Especificações da Tela e Scroll -->
+      <div class="sidebar-card">
+        <div class="sidebar-card-title">Telemetria da Tela</div>
+
+        <div class="info-grid">
+          <div class="info-item">
+            <div class="info-item-label">Resolução</div>
+            <div id="infoResolution" class="info-item-val">—</div>
+          </div>
+          <div class="info-item">
+            <div class="info-item-label">Proporção</div>
+            <div id="infoRatio" class="info-item-val">—</div>
+          </div>
+          <div class="info-item">
+            <div class="info-item-label">Posição Scroll</div>
+            <div id="infoScrollY" class="info-item-val">0 px</div>
+          </div>
+          <div class="info-item">
+            <div class="info-item-label">Altura Total</div>
+            <div id="infoMaxScroll" class="info-item-val">0 px</div>
+          </div>
+        </div>
+
+        <div style="margin-top: 1rem; font-size: 0.75rem; color: var(--admin-text-muted); line-height: 1.4;">
+          <strong>Dispositivo provável:</strong> <span id="infoDeviceGuess">—</span>
+        </div>
+      </div>
+
+      <!-- Informações do Firebase / Configuração -->
+      <div class="sidebar-card">
+        <div class="sidebar-card-title">Conexão & Hospedagem</div>
+        <div id="connectionHelpBox" class="firebase-notice-box">
+          <strong>⚡ Pronto para Vercel:</strong> O projeto pode ser implantado diretamente.<br><br>
+          Para sincronizar em dispositivos diferentes na internet, preencha as credenciais em <code>firebase-config.js</code>. Enquanto não preencher, o teste funciona localmente entre abas!
+        </div>
+      </div>
+
+    </aside>
+
+  </main>
+
+  <!-- Script do Painel Admin -->
+  <script type="module">
+    import { startAdminListening } from './tracker.js';
+    import { isFirebaseConfigured } from './firebase-config.js';
+
+    // Elementos da interface
+    const sessionIdInput = document.getElementById('sessionIdInput');
+    const btnCopyLink = document.getElementById('btnCopyLink');
+    const btnOpenReader = document.getElementById('btnOpenReader');
+    const stageContainer = document.getElementById('stageContainer');
+    const deviceChassis = document.getElementById('deviceChassis');
+    const deviceIsland = document.getElementById('deviceIsland');
+    const mirrorIframe = document.getElementById('mirrorIframe');
+    const dimensionLabel = document.getElementById('dimensionLabel');
+    const chkAutoFit = document.getElementById('chkAutoFit');
+    const chkAutoScroll = document.getElementById('chkAutoScroll');
+    const transportBadge = document.getElementById('transportBadge');
+
+    const readerStatusBanner = document.getElementById('readerStatusBanner');
+    const readerStatusTitle = document.getElementById('readerStatusTitle');
+    const readerStatusSub = document.getElementById('readerStatusSub');
+    const progressPercentLabel = document.getElementById('progressPercentLabel');
+    const progressBarFill = document.getElementById('progressBarFill');
+    const readingSnippet = document.getElementById('readingSnippet');
+
+    const infoResolution = document.getElementById('infoResolution');
+    const infoRatio = document.getElementById('infoRatio');
+    const infoScrollY = document.getElementById('infoScrollY');
+    const infoMaxScroll = document.getElementById('infoMaxScroll');
+    const infoDeviceGuess = document.getElementById('infoDeviceGuess');
+
+    // Estado da telemetria
+    let currentSessionId = new URLSearchParams(window.location.search).get('session') || 'leitor-principal';
+    sessionIdInput.value = currentSessionId;
+
+    let lastPayload = null;
+    let offlineTimer = null;
+
+    // Atualiza o iframe para a sessão atual
+    function recarregarIframe() {
+      mirrorIframe.src = `index.html?session=${encodeURIComponent(currentSessionId)}&mirror=1`;
+    }
+
+    // Copiar Link
+    btnCopyLink.addEventListener('click', () => {
+      const url = new URL(window.location.origin + '/carta');
+      url.searchParams.set('session', currentSessionId);
+      navigator.clipboard.writeText(url.href).then(() => {
+        const originalText = btnCopyLink.innerHTML;
+        btnCopyLink.innerHTML = '✓ Link Copiado!';
+        setTimeout(() => { btnCopyLink.innerHTML = originalText; }, 2000);
+      });
+    });
+
+    // Abrir Leitor em Nova Aba para teste simultâneo
+    btnOpenReader.addEventListener('click', () => {
+      const url = new URL(window.location.origin + '/index.html');
+      url.searchParams.set('session', currentSessionId);
+      window.open(url.href, '_blank');
+    });
+
+    // Mudança manual de Sessão
+    sessionIdInput.addEventListener('change', () => {
+      currentSessionId = sessionIdInput.value.trim() || 'leitor-principal';
+      recarregarIframe();
+      conectar();
+    });
+
+    // Calcula dispositivo provável baseado nas dimensões
+    function estimarDispositivo(w, h) {
+      if (w <= 430 && h <= 950) return 'Smartphone (iOS / Android)';
+      if (w <= 850 && h <= 1200) return 'Tablet / iPad';
+      if (w > 1200 && h < 800) return 'Laptop / Notebook';
+      if (w >= 1920) return 'Monitor Desktop Full HD / Ultrawide';
+      return 'Dispositivo Desktop ou Janela Redimensionada';
+    }
+
+    // Ajusta o tamanho e escala do mockup
+    function recalcularEscalaMockup(width, height) {
+      if (!width || !height) return;
+
+      deviceChassis.style.width = width + 'px';
+      deviceChassis.style.height = height + 'px';
+
+      // Mostra a dynamic island apenas em telas móveis verticais
+      if (width <= 480) {
+        deviceIsland.style.display = 'flex';
+        deviceChassis.style.borderRadius = '46px';
+      } else {
+        deviceIsland.style.display = 'none';
+        deviceChassis.style.borderRadius = '16px';
+      }
+
+      if (chkAutoFit.checked) {
+        const stageH = stageContainer.clientHeight - 120; // margem para toolbar
+        const stageW = stageContainer.clientWidth - 80;
+
+        const scaleY = stageH / height;
+        const scaleW = stageW / width;
+        let scale = Math.min(scaleY, scaleW);
+
+        // Se a tela dele couber naturalmente sem escala, mantém 1
+        if (scale > 1) scale = 1;
+        scale = Math.max(0.25, scale); // mínimo razoável
+
+        deviceChassis.style.transform = `scale(${scale})`;
+        deviceChassis.style.transformOrigin = 'center center';
+      } else {
+        deviceChassis.style.transform = 'scale(1)';
+      }
+    }
+
+    window.addEventListener('resize', () => {
+      if (lastPayload && lastPayload.viewport) {
+        recalcularEscalaMockup(lastPayload.viewport.width, lastPayload.viewport.height);
+      }
+    });
+
+    chkAutoFit.addEventListener('change', () => {
+      if (lastPayload && lastPayload.viewport) {
+        recalcularEscalaMockup(lastPayload.viewport.width, lastPayload.viewport.height);
+      }
+    });
+
+    // Processa a telemetria recebida do leitor
+    function processarAtualizacaoLeitor(payload, transportSource) {
+      lastPayload = payload;
+      clearTimeout(offlineTimer);
+
+      transportBadge.textContent = transportSource || 'Conectado';
+
+      // 1. Status do Leitor (Ativo / Inativo / Minimizou)
+      if (!payload.isOnline) {
+        readerStatusBanner.className = 'reader-status-banner offline';
+        readerStatusTitle.textContent = 'Leitor Desconectado';
+        readerStatusSub.textContent = 'A aba da carta foi fechada';
+      } else if (!payload.isTabActive) {
+        readerStatusBanner.className = 'reader-status-banner background-tab';
+        readerStatusTitle.textContent = 'Aba em Segundo Plano';
+        readerStatusSub.textContent = 'O leitor alternou para outra aba ou janela';
+      } else {
+        readerStatusBanner.className = 'reader-status-banner';
+        readerStatusTitle.textContent = 'Lendo Agora (Ao Vivo)';
+        readerStatusSub.textContent = 'Interagindo com a carta no momento';
+      }
+
+      // Se não receber atualizações por 10s e estiver marcado como online, sinaliza inatividade
+      offlineTimer = setTimeout(() => {
+        if (readerStatusBanner.classList.contains('reader-status-banner') && !readerStatusBanner.classList.contains('offline')) {
+          readerStatusSub.textContent = 'Leitor parado ou inativo há alguns segundos';
+        }
+      }, 10000);
+
+      // 2. Progresso de Leitura
+      const pct = payload.scroll ? payload.scroll.percent : 0;
+      progressPercentLabel.textContent = `${pct}%`;
+      progressBarFill.style.width = `${pct}%`;
+
+      // 3. Dimensões e Emulação da Tela
+      if (payload.viewport) {
+        const { width, height } = payload.viewport;
+        dimensionLabel.textContent = `${width} × ${height} px`;
+        infoResolution.textContent = `${width} × ${height}`;
+        infoRatio.textContent = (width / height).toFixed(2) + ' : 1';
+        infoDeviceGuess.textContent = estimarDispositivo(width, height);
+
+        recalcularEscalaMockup(width, height);
+      }
+
+      // 4. Métricas de Scroll
+      if (payload.scroll) {
+        infoScrollY.textContent = `${payload.scroll.y} px`;
+        infoMaxScroll.textContent = `${payload.scroll.maxY} px`;
+
+        // 5. Rola o espelho exatamente para o mesmo pixel!
+        if (chkAutoScroll.checked && mirrorIframe.contentWindow) {
+          try {
+            mirrorIframe.contentWindow.scrollTo({
+              top: payload.scroll.y,
+              behavior: 'auto'
+            });
+          } catch (e) {
+            console.warn('Não foi possível rolar o iframe:', e);
+          }
+        }
+      }
+
+      // 6. Trecho em foco
+      if (payload.activeSection && payload.activeSection.textSnippet) {
+        readingSnippet.innerHTML = `<strong>Seção ${payload.activeSection.index}/${payload.activeSection.total}:</strong><br>"${payload.activeSection.textSnippet}"`;
+      }
+    }
+
+    // Inicialização do ouvinte
+    function conectar() {
+      transportBadge.textContent = isFirebaseConfigured() ? 'Firebase Realtime' : 'Modo Local (Abas)';
+      startAdminListening(currentSessionId, (payload, source) => {
+        processarAtualizacaoLeitor(payload, source);
+      });
+    }
+
+    conectar();
+  </script>
+</body>
+</html>
