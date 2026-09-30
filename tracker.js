@@ -286,9 +286,16 @@ export function startAdminListening(sessionId, onClientsUpdate) {
               if (parsed.data.clients && typeof parsed.data.clients === 'object') {
                 for (const [cId, cPayload] of Object.entries(parsed.data.clients)) {
                   if (cPayload && typeof cPayload === 'object') {
+                    const prev = clientsMap[cId];
+                    let userAction = now;
+                    if (prev && prev.scroll && cPayload.scroll) {
+                      const diff = Math.abs(cPayload.scroll.y - prev.scroll.y);
+                      userAction = (diff >= 3 || cPayload.isScrollEvent) ? now : (prev.lastUserActionAt || (now - 30000));
+                    }
                     clientsMap[cId] = {
                       ...cPayload,
-                      lastReceivedAt: now
+                      lastReceivedAt: now,
+                      lastUserActionAt: userAction
                     };
                   }
                 }
@@ -297,7 +304,8 @@ export function startAdminListening(sessionId, onClientsUpdate) {
                 const cId = r.clientId || 'default_reader';
                 clientsMap[cId] = {
                   ...r,
-                  lastReceivedAt: now
+                  lastReceivedAt: now,
+                  lastUserActionAt: now
                 };
               }
               onClientsUpdate(clientsMap, 'Firebase Realtime', null);
@@ -310,24 +318,41 @@ export function startAdminListening(sessionId, onClientsUpdate) {
                 if (parsed.data === null) {
                   delete clientsMap[cId];
                 } else if (typeof parsed.data === 'object') {
+                  const prev = clientsMap[cId];
+                  let userAction = now;
+                  if (prev && prev.scroll && parsed.data.scroll) {
+                    const diff = Math.abs(parsed.data.scroll.y - prev.scroll.y);
+                    userAction = (diff >= 3 || parsed.data.isScrollEvent) ? now : (prev.lastUserActionAt || (now - 30000));
+                  }
                   clientsMap[cId] = {
                     ...parsed.data,
-                    lastReceivedAt: now
+                    lastReceivedAt: now,
+                    lastUserActionAt: userAction
                   };
                 }
               } else if (clientsMap[cId]) {
                 const subProp = parts[2];
                 clientsMap[cId][subProp] = parsed.data;
                 clientsMap[cId].lastReceivedAt = now;
+                if (subProp === 'scroll') {
+                  clientsMap[cId].lastUserActionAt = now;
+                }
               }
               onClientsUpdate(clientsMap, 'Firebase Realtime', cId);
             }
           } else if (parsed.path === '/reader' && parsed.data && typeof parsed.data === 'object') {
             const r = parsed.data;
             const cId = r.clientId || 'default_reader';
+            const prev = clientsMap[cId];
+            let userAction = now;
+            if (prev && prev.scroll && r.scroll) {
+              const diff = Math.abs(r.scroll.y - prev.scroll.y);
+              userAction = (diff >= 3) ? now : (prev.lastUserActionAt || (now - 30000));
+            }
             clientsMap[cId] = {
               ...r,
-              lastReceivedAt: now
+              lastReceivedAt: now,
+              lastUserActionAt: userAction
             };
             onClientsUpdate(clientsMap, 'Firebase Realtime', cId);
           }
@@ -346,8 +371,14 @@ export function startAdminListening(sessionId, onClientsUpdate) {
           if (parts[0] === 'clients' && parts[1]) {
             const cId = parts[1];
             if (!clientsMap[cId]) clientsMap[cId] = {};
+            const prevScroll = clientsMap[cId].scroll;
             Object.assign(clientsMap[cId], parsed.data);
             clientsMap[cId].lastReceivedAt = now;
+            if (parsed.data.scroll && prevScroll) {
+              if (Math.abs(parsed.data.scroll.y - prevScroll.y) >= 3) {
+                clientsMap[cId].lastUserActionAt = now;
+              }
+            }
             onClientsUpdate(clientsMap, 'Firebase Realtime', cId);
           } else if (parts[0] === 'reader' && parsed.data && typeof parsed.data === 'object') {
             const cId = parsed.data.clientId || 'default_reader';

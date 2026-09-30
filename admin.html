@@ -543,15 +543,46 @@
         if (manual) return manual;
       }
 
-      // Modo Foco Automático:
-      // 1. Prioriza abas que estão ativas no primeiro plano (isTabActive === true)
+      // Modo Foco Automático Estável (Anti-flicker com histerese de rolagem):
       const foregroundClients = activeList.filter(c => c.isTabActive === true);
-      if (foregroundClients.length > 0) {
-        foregroundClients.sort((a, b) => (b.lastReceivedAt || 0) - (a.lastReceivedAt || 0));
+
+      // Se há exatamente 1 aparelho no primeiro plano:
+      if (foregroundClients.length === 1) {
         return foregroundClients[0];
       }
 
-      // 2. Se todas estão em segundo plano (minimizadas), pega a que interagiu mais recentemente
+      // Se há 2 ou mais aparelhos/abas no primeiro plano ao mesmo tempo:
+      if (foregroundClients.length > 1) {
+        const currentFocused = foregroundClients.find(c => c.clientId === focusedClientId);
+
+        if (currentFocused) {
+          // O aparelho atual continua ativo!
+          // Só muda para outro aparelho se o outro tiver rolado ativamente mais recentemente (com folga de 2s):
+          const otherClients = foregroundClients.filter(c => c.clientId !== focusedClientId);
+          otherClients.sort((a, b) => (b.lastUserActionAt || 0) - (a.lastUserActionAt || 0));
+          const challenger = otherClients[0];
+
+          const currentActionTime = currentFocused.lastUserActionAt || 0;
+          const challengerActionTime = challenger ? (challenger.lastUserActionAt || 0) : 0;
+
+          if (challenger && challengerActionTime > (currentActionTime + 2000)) {
+            // O outro aparelho foi rolado ativamente pelo usuário: transfere o foco!
+            return challenger;
+          }
+
+          // Caso contrário, MANTÉM O FOCO no aparelho atual, sem oscilar nem piscar!
+          return currentFocused;
+        }
+
+        // Se o aparelho anterior não está mais ativo, foca no que tiver ação mais recente
+        foregroundClients.sort((a, b) => (b.lastUserActionAt || b.lastReceivedAt || 0) - (a.lastUserActionAt || a.lastReceivedAt || 0));
+        return foregroundClients[0];
+      }
+
+      // Se todas as abas estão em segundo plano:
+      if (focusedClientId && activeList.some(c => c.clientId === focusedClientId)) {
+        return activeList.find(c => c.clientId === focusedClientId);
+      }
       activeList.sort((a, b) => (b.lastReceivedAt || 0) - (a.lastReceivedAt || 0));
       return activeList[0];
     }
@@ -575,29 +606,36 @@
         if (selectedClientId === 'auto') {
           const focused = resolveFocusedClient();
           const label = focused ? (focused.deviceLabel || 'Aba') : 'Aba Ativa';
-          multiDeviceSub.textContent = `Foco inteligente na aba em leitura (${label})`;
+          multiDeviceSub.textContent = `Foco inteligente no aparelho em leitura (${label})`;
         } else {
-          multiDeviceSub.textContent = `Visualização fixada manualmente em uma aba`;
+          multiDeviceSub.textContent = `Visualização fixada manualmente em um aparelho`;
         }
       }
 
       // Constrói os botões da barra superior
       let html = `
-        <button class="client-tab-btn ${selectedClientId === 'auto' ? 'active' : ''}" data-id="auto" title="Focar automaticamente na aba que o leitor estiver rolando">
+        <button class="client-tab-btn ${selectedClientId === 'auto' ? 'active' : ''}" data-id="auto" title="Focar automaticamente no aparelho que o leitor estiver rolando">
           <span class="tab-dot ${count > 0 ? 'live' : ''}"></span>
           <span class="tab-label">⚡ Foco Automático</span>
         </button>
       `;
 
       activeList.forEach((c, idx) => {
-        const isSelected = selectedClientId === c.clientId;
+        const isManuallySelected = selectedClientId === c.clientId;
+        const isAutoFocused = selectedClientId === 'auto' && focusedClientId === c.clientId;
         const isForeground = c.isTabActive === true;
         const dotStatus = isForeground ? 'live' : 'background';
         const label = c.deviceLabel || `Aba ${idx + 1}`;
-        const statusText = isForeground ? 'Lendo' : '2º Plano';
+
+        let statusText = isForeground ? 'Lendo' : '2º Plano';
+        if (isAutoFocused && activeList.length > 1) {
+          statusText = 'Em Foco 👁️';
+        }
+
+        const isBtnActive = isManuallySelected || isAutoFocused;
 
         html += `
-          <button class="client-tab-btn ${isSelected ? 'active' : ''}" data-id="${c.clientId}" title="Clique para fixar a visualização nesta aba">
+          <button class="client-tab-btn ${isBtnActive ? 'active' : ''}" data-id="${c.clientId}" title="Clique para fixar a visualização neste aparelho">
             <span class="tab-dot ${dotStatus}"></span>
             <span class="tab-label">${label} • ${statusText}</span>
           </button>
