@@ -205,6 +205,15 @@
         </div>
       </div>
 
+      <!-- Relatório de Sessão (aparece quando um leitor desconecta) -->
+      <div class="sidebar-card" id="reportCard" style="display:none;">
+        <div class="sidebar-card-title">
+          <span>📊 Relatório da Sessão</span>
+          <span id="reportCountBadge" style="font-size:0.7rem; color:#a78bfa;">0 sessões</span>
+        </div>
+        <div id="reportContainer"></div>
+      </div>
+
     </aside>
 
   </main>
@@ -292,6 +301,13 @@
     let hasLoggedCompletion = false;
     let lastHighlightedElement = null;
 
+    // Relatórios de sessão
+    let savedReports = [];
+    let reportedClientIds = new Set();
+    const reportCard = document.getElementById('reportCard');
+    const reportContainer = document.getElementById('reportContainer');
+    const reportCountBadge = document.getElementById('reportCountBadge');
+
     function formatTime(totalSecs) {
       const mins = Math.floor(totalSecs / 60);
       const secs = totalSecs % 60;
@@ -301,6 +317,87 @@
     function getNowFormatted() {
       const d = new Date();
       return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+    }
+
+    function salvarRelatorioCliente(client) {
+      if (!client || !client.clientId) return;
+      if (reportedClientIds.has(client.clientId)) return;
+      const totalSecs = client.activeReadingSeconds || 0;
+      if (totalSecs < 5) return; // ignora sessões muito curtas
+
+      reportedClientIds.add(client.clientId);
+
+      const rawTimes = client.sectionTimes || {};
+      const sectionList = Object.entries(rawTimes)
+        .map(([idx, data]) => ({ index: parseInt(idx), seconds: data.seconds || 0, snippet: data.snippet || '', tag: data.tag || 'p' }))
+        .filter(s => s.seconds > 0)
+        .sort((a, b) => a.index - b.index);
+
+      const topSection = [...sectionList].sort((a, b) => b.seconds - a.seconds)[0] || null;
+
+      savedReports.unshift({
+        id: client.clientId,
+        deviceLabel: client.deviceLabel || 'Dispositivo',
+        savedAt: Date.now(),
+        totalSecs,
+        sectionList,
+        topSection,
+      });
+
+      renderRelatorios();
+    }
+
+    function renderRelatorios() {
+      if (savedReports.length === 0) { reportCard.style.display = 'none'; return; }
+      reportCard.style.display = '';
+      reportCountBadge.textContent = `${savedReports.length} sessão${savedReports.length > 1 ? 'ões' : ''}`;
+
+      reportContainer.innerHTML = savedReports.map((r, ri) => {
+        const maxSecs = Math.max(...r.sectionList.map(s => s.seconds), 1);
+        const topIdx = r.topSection ? r.topSection.index : -1;
+
+        const sectionRows = r.sectionList.map(s => {
+          const pct = Math.round((s.seconds / maxSecs) * 100);
+          const isTop = s.index === topIdx;
+          return `
+            <div style="margin-bottom:0.5rem;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                <span style="font-size:0.68rem;color:${isTop ? '#fbbf24' : 'var(--admin-text-muted)'};font-weight:${isTop ? '600' : '400'};flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${s.snippet}">
+                  ${isTop ? '⭐ ' : ''}Trecho ${s.index}: "${s.snippet.slice(0, 40)}${s.snippet.length > 40 ? '…' : ''}"
+                </span>
+                <span style="font-size:0.68rem;color:#94a3b8;margin-left:0.5rem;flex-shrink:0;">${formatTime(s.seconds)}</span>
+              </div>
+              <div style="background:rgba(255,255,255,0.07);border-radius:3px;height:4px;overflow:hidden;">
+                <div style="width:${pct}%;height:100%;background:${isTop ? '#fbbf24' : '#38bdf8'};border-radius:3px;"></div>
+              </div>
+            </div>`;
+        }).join('');
+
+        const hora = new Date(r.savedAt);
+        const horaStr = `${String(hora.getHours()).padStart(2,'0')}:${String(hora.getMinutes()).padStart(2,'0')}`;
+
+        return `
+          <div style="margin-bottom:${ri < savedReports.length-1 ? '1.2rem' : '0'};padding-bottom:${ri < savedReports.length-1 ? '1.2rem' : '0'};border-bottom:${ri < savedReports.length-1 ? '1px solid rgba(255,255,255,0.07)' : 'none'};">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
+              <span style="font-size:0.75rem;font-weight:600;color:#e2e8f0;">📱 ${r.deviceLabel}</span>
+              <span style="font-size:0.68rem;color:#64748b;">${horaStr}</span>
+            </div>
+            <div style="display:flex;gap:0.8rem;margin-bottom:0.75rem;">
+              <div style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);border-radius:6px;padding:0.35rem 0.6rem;text-align:center;flex:1;">
+                <div style="font-size:0.65rem;color:#a78bfa;margin-bottom:2px;">Tempo Ativo</div>
+                <div style="font-size:0.85rem;font-weight:700;color:#c4b5fd;">${formatTime(r.totalSecs)}</div>
+              </div>
+              ${r.topSection ? `
+              <div style="background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);border-radius:6px;padding:0.35rem 0.6rem;text-align:center;flex:1;">
+                <div style="font-size:0.65rem;color:#fbbf24;margin-bottom:2px;">Trecho Principal</div>
+                <div style="font-size:0.85rem;font-weight:700;color:#fde68a;">${formatTime(r.topSection.seconds)}</div>
+              </div>` : ''}
+            </div>
+            ${r.sectionList.length > 0 ? `
+            <div style="font-size:0.68rem;color:var(--admin-text-muted);margin-bottom:0.4rem;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Tempo por trecho</div>
+            ${sectionRows}` : ''}
+          </div>`;
+      }).join('');
     }
 
     function adicionarEventoLinhaDoTempo(icone, texto, tipo = 'normal') {
@@ -586,6 +683,7 @@
       // Remove da lista do admin e do banco TODOS os clientes que foram desconectados
       if (vivos.length > 0) {
         for (const m of mortos) {
+          salvarRelatorioCliente(m.client); // salva histórico antes de remover
           delete clients[m.id];
           if (selectedClientId === m.id) selectedClientId = 'auto';
           if (focusedClientId === m.id) focusedClientId = null;
@@ -603,16 +701,20 @@
 
         // Mantém apenas o mais recente (mortos[0]) e descarta todos os outros anteriores
         for (let i = 1; i < mortos.length; i++) {
-          const deadId = mortos[i].id;
-          delete clients[deadId];
-          if (selectedClientId === deadId) selectedClientId = 'auto';
-          if (focusedClientId === deadId) focusedClientId = null;
+          const dead = mortos[i];
+          salvarRelatorioCliente(dead.client); // salva histórico antes de remover
+          delete clients[dead.id];
+          if (selectedClientId === dead.id) selectedClientId = 'auto';
+          if (focusedClientId === dead.id) focusedClientId = null;
           if (dbUrl) {
-            fetch(`${dbUrl}/sessoes/${encodeURIComponent(currentSessionId)}/clients/${encodeURIComponent(deadId)}.json`, {
+            fetch(`${dbUrl}/sessoes/${encodeURIComponent(currentSessionId)}/clients/${encodeURIComponent(dead.id)}.json`, {
               method: 'DELETE'
             }).catch(() => {});
           }
         }
+
+        // Salva o relatório do último cliente (mortos[0]) também, já que ele também está morto
+        salvarRelatorioCliente(mortos[0].client);
       }
     }
 

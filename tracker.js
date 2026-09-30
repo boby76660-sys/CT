@@ -128,12 +128,31 @@ export function startReaderTracking(sessionId) {
     activeReadingSeconds = 0;
   }
 
+  // Tempo por trecho: { "1": { seconds: 45, snippet: "..." }, ... }
+  const sectionTimesKey = 'ct_section_times_' + sessionId + '_' + clientId.slice(0, 14);
+  let sectionTimes = {};
+  try {
+    sectionTimes = JSON.parse(localStorage.getItem(sectionTimesKey) || '{}');
+  } catch (e) {
+    sectionTimes = {};
+  }
+
   setInterval(() => {
     if (!document.hidden) {
       activeReadingSeconds++;
-      try {
-        localStorage.setItem(secsKey, String(activeReadingSeconds));
-      } catch (e) {}
+      try { localStorage.setItem(secsKey, String(activeReadingSeconds)); } catch (e) {}
+
+      // Acumula tempo no trecho atual
+      const section = getActiveSectionInfo();
+      if (section) {
+        const sk = String(section.index);
+        if (!sectionTimes[sk]) {
+          sectionTimes[sk] = { seconds: 0, snippet: section.textSnippet, tag: section.tag };
+        }
+        sectionTimes[sk].seconds++;
+        sectionTimes[sk].snippet = section.textSnippet;
+        try { localStorage.setItem(sectionTimesKey, JSON.stringify(sectionTimes)); } catch (e) {}
+      }
     }
   }, 1000);
 
@@ -163,6 +182,7 @@ export function startReaderTracking(sessionId) {
       activeSection: getActiveSectionInfo(),
       readingStartedAt,
       activeReadingSeconds,
+      sectionTimes,
       meta: {
         timestamp: Date.now()
       }
