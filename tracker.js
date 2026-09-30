@@ -60,15 +60,18 @@ export function getActiveSectionInfo() {
 }
 
 /**
- * Gera ou recupera um clientId único para esta aba específica (mantém o mesmo se der F5)
+ * Gera ou recupera um clientId único para este dispositivo/navegador.
+ * Usa localStorage para persistir mesmo após fechar o navegador.
+ * Escopado pela sessionId para não conflitar entre cartas diferentes.
  */
-function getOrCreateClientId() {
+function getOrCreateClientId(sessionId) {
   let id = null;
+  const key = 'ct_client_id_' + sessionId;
   try {
-    id = sessionStorage.getItem('ct_reader_client_id');
+    id = localStorage.getItem(key);
     if (!id) {
       id = 'c_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7);
-      sessionStorage.setItem('ct_reader_client_id', id);
+      localStorage.setItem(key, id);
     }
   } catch (e) {
     id = 'c_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7);
@@ -100,25 +103,27 @@ function getDeviceLabel() {
 export function startReaderTracking(sessionId) {
   const isFb = isFirebaseConfigured();
   const dbUrl = isFb ? firebaseConfig.databaseURL.replace(/\/$/, '') : null;
-  const clientId = getOrCreateClientId();
+  const clientId = getOrCreateClientId(sessionId);
   const deviceLabel = getDeviceLabel();
 
-  // Registra o momento exato em que o leitor abriu a carta (persiste no F5 via sessionStorage)
+  // Registra o momento exato em que o leitor abriu a carta (persiste no localStorage)
   let readingStartedAt;
   try {
-    readingStartedAt = parseInt(sessionStorage.getItem('ct_reading_started_at') || '0', 10);
+    const startKey = 'ct_reading_started_' + sessionId;
+    readingStartedAt = parseInt(localStorage.getItem(startKey) || '0', 10);
     if (!readingStartedAt) {
       readingStartedAt = Date.now();
-      sessionStorage.setItem('ct_reading_started_at', String(readingStartedAt));
+      localStorage.setItem(startKey, String(readingStartedAt));
     }
   } catch (e) {
     readingStartedAt = Date.now();
   }
 
-  // Contador de segundos de leitura ATIVA (só conta quando a aba está visível)
+  // Contador de segundos de leitura ATIVA (só conta quando a aba está visível, persiste no localStorage)
+  const secsKey = 'ct_active_secs_' + sessionId + '_' + clientId.slice(0, 14);
   let activeReadingSeconds;
   try {
-    activeReadingSeconds = parseInt(sessionStorage.getItem('ct_active_reading_seconds') || '0', 10);
+    activeReadingSeconds = parseInt(localStorage.getItem(secsKey) || '0', 10);
   } catch (e) {
     activeReadingSeconds = 0;
   }
@@ -127,7 +132,7 @@ export function startReaderTracking(sessionId) {
     if (!document.hidden) {
       activeReadingSeconds++;
       try {
-        sessionStorage.setItem('ct_active_reading_seconds', String(activeReadingSeconds));
+        localStorage.setItem(secsKey, String(activeReadingSeconds));
       } catch (e) {}
     }
   }, 1000);
