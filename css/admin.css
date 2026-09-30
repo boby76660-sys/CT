@@ -185,6 +185,107 @@ body {
   overflow: hidden; /* Nunca mostra scrollbar aqui para evitar saltos de layout */
 }
 
+/* Barra Superior de Abas / Dispositivos Conectados */
+.client-tabs-bar {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(18, 24, 38, 0.92);
+  border: 1px solid var(--admin-border);
+  backdrop-filter: blur(14px);
+  padding: 6px 12px;
+  border-radius: 999px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  max-width: 92%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.client-tabs-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.client-tabs-count-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--admin-text-muted);
+  padding: 3px 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.client-tabs-count-badge.multi {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+}
+
+.client-tabs-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.client-tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--admin-text-muted);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.client-tab-btn:hover {
+  color: var(--admin-text-main);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.client-tab-btn.active {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #60a5fa;
+  box-shadow: 0 0 14px rgba(59, 130, 246, 0.3);
+}
+
+.tab-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #64748b;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.tab-dot.live {
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
+}
+
+.tab-dot.background {
+  background: #f59e0b;
+  box-shadow: 0 0 6px #f59e0b;
+}
+
+.tab-dot.offline {
+  background: #ef4444;
+}
+
 /* O MOCKUP DO DISPOSITIVO REAL */
 .device-chassis-outer {
   position: relative;
@@ -316,6 +417,48 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+/* Alerta de Múltiplos Dispositivos / Abas */
+.multi-device-alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  margin-bottom: 0.85rem;
+  font-size: 0.8rem;
+  color: #bfdbfe;
+  animation: fadeInAlert 0.3s ease;
+}
+
+@keyframes fadeInAlert {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.multi-device-icon {
+  font-size: 1.15rem;
+  flex-shrink: 0;
+}
+
+.multi-device-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.multi-device-text strong {
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.multi-device-text span {
+  font-size: 0.72rem;
+  color: #93c5fd;
 }
 
 /* Status do Leitor */

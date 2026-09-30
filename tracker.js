@@ -60,11 +60,48 @@ export function getActiveSectionInfo() {
 }
 
 /**
+ * Gera ou recupera um clientId único para esta aba específica (mantém o mesmo se der F5)
+ */
+function getOrCreateClientId() {
+  let id = null;
+  try {
+    id = sessionStorage.getItem('ct_reader_client_id');
+    if (!id) {
+      id = 'c_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7);
+      sessionStorage.setItem('ct_reader_client_id', id);
+    }
+  } catch (e) {
+    id = 'c_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7);
+  }
+  return id;
+}
+
+/**
+ * Identifica o modelo aproximado do dispositivo para identificação no Admin
+ */
+function getDeviceLabel() {
+  const ua = navigator.userAgent || '';
+  let os = 'Dispositivo';
+  if (/iPhone/i.test(ua)) os = 'iPhone';
+  else if (/iPad/i.test(ua)) os = 'iPad';
+  else if (/Android/i.test(ua)) os = 'Android';
+  else if (/Macintosh|Mac OS/i.test(ua)) os = 'Mac';
+  else if (/Windows/i.test(ua)) os = 'Windows';
+  else if (/Linux/i.test(ua)) os = 'Linux';
+
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  return `${os} (${w}×${h})`;
+}
+
+/**
  * Inicia o rastreamento SILENCIOSO na página do LEITOR
  */
 export function startReaderTracking(sessionId) {
   const isFb = isFirebaseConfigured();
   const dbUrl = isFb ? firebaseConfig.databaseURL.replace(/\/$/, '') : null;
+  const clientId = getOrCreateClientId();
+  const deviceLabel = getDeviceLabel();
 
   function coletarDados() {
     const maxY = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
@@ -73,6 +110,8 @@ export function startReaderTracking(sessionId) {
 
     return {
       sessionId,
+      clientId,
+      deviceLabel,
       isOnline: true,
       isTabActive: !document.hidden,
       viewport: {
@@ -99,16 +138,18 @@ export function startReaderTracking(sessionId) {
 
     // 1. Canal local
     if (broadcastChannel) {
-      try { broadcastChannel.postMessage({ type: 'READER_UPDATE', payload }); } catch (e) {}
+      try {
+        broadcastChannel.postMessage({ type: 'READER_UPDATE', payload, clientId });
+      } catch (e) {}
     }
     try {
-      localStorage.setItem('carta_last_payload_' + sessionId, JSON.stringify(payload));
+      localStorage.setItem('carta_client_' + sessionId + '_' + clientId, JSON.stringify(payload));
     } catch (e) {}
 
-    // 2. Firebase Realtime Database
+    // 2. Firebase Realtime Database isolado por cliente
     if (dbUrl) {
       try {
-        fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/reader.json`, {
+        fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/clients/${clientId}.json`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -118,7 +159,7 @@ export function startReaderTracking(sessionId) {
     }
   }, 40);
 
-  // Função de envio instantâneo sem throttle (vital para quando o app é minimizado no celular)
+  // Envio instantâneo sem throttle (vital para eventos de visibilidade e congelamento de abas)
   function enviarImediato(customOnline, customTabActive) {
     const payload = coletarDados();
     if (typeof customOnline === 'boolean') payload.isOnline = customOnline;
@@ -126,16 +167,18 @@ export function startReaderTracking(sessionId) {
 
     // 1. Canal local
     if (broadcastChannel) {
-      try { broadcastChannel.postMessage({ type: 'READER_UPDATE', payload }); } catch (e) {}
+      try {
+        broadcastChannel.postMessage({ type: 'READER_UPDATE', payload, clientId });
+      } catch (e) {}
     }
     try {
-      localStorage.setItem('carta_last_payload_' + sessionId, JSON.stringify(payload));
+      localStorage.setItem('carta_client_' + sessionId + '_' + clientId, JSON.stringify(payload));
     } catch (e) {}
 
-    // 2. Firebase com prioridade do SO via keepalive
+    // 2. Firebase isolado
     if (dbUrl) {
       try {
-        fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/reader.json`, {
+        fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/clients/${clientId}.json`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -149,8 +192,7 @@ export function startReaderTracking(sessionId) {
   window.addEventListener('scroll', enviar, { passive: true });
   window.addEventListener('resize', enviar, { passive: true });
 
-  // Batimento cardíaco frequente (1s): garante que o Admin saiba que o leitor ainda está na página
-  // Quando o app é minimizado ou a tela é bloqueada no celular, o setInterval congela imediatamente
+  // Batimento cardíaco frequente (1s) para confirmar presença ativa
   const heartbeatTimer = setInterval(() => {
     if (!document.hidden) {
       enviarImediato(true, true);
@@ -163,12 +205,10 @@ export function startReaderTracking(sessionId) {
   });
 
   window.addEventListener('blur', () => {
-    // No celular, ao arrastar para ir para a Home ou alternar apps, o 'blur' dispara antes
     enviarImediato(true, false);
   });
 
   window.addEventListener('focus', () => {
-    // Ao voltar para o navegador, reativa o status ao vivo na mesma hora
     enviarImediato(true, true);
   });
 
@@ -191,45 +231,92 @@ export function startReaderTracking(sessionId) {
 }
 
 /**
- * Inicia a escuta em tempo real no ADMIN
+ * Inicia a escuta em tempo real no ADMIN (com suporte a multi-abas e multi-dispositivos)
  */
-export function startAdminListening(sessionId, onUpdate) {
+export function startAdminListening(sessionId, onClientsUpdate) {
   const isFb = isFirebaseConfigured();
   const dbUrl = isFb ? firebaseConfig.databaseURL.replace(/\/$/, '') : null;
+  const clientsMap = {};
 
   // 1. Escuta local via BroadcastChannel
   if (broadcastChannel) {
     broadcastChannel.addEventListener('message', (event) => {
       if (event.data && event.data.payload && event.data.payload.sessionId === sessionId) {
-        onUpdate(event.data.payload, 'Local (Broadcast)');
+        const payload = event.data.payload;
+        const cId = payload.clientId || 'local_default';
+        clientsMap[cId] = {
+          ...payload,
+          lastPing: Date.now()
+        };
+        onClientsUpdate(clientsMap, 'Local (Broadcast)', cId);
       }
     });
   }
 
-  // 2. Escuta via EventSource (SSE) direto do Firebase Realtime Database
+  // 2. Escuta via EventSource (SSE) direto do Firebase Realtime Database em /clients.json
   if (dbUrl) {
     try {
-      const sseUrl = `${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/reader.json`;
+      const sseUrl = `${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/clients.json`;
       const eventSource = new EventSource(sseUrl);
 
       eventSource.addEventListener('put', (event) => {
         try {
           const parsed = JSON.parse(event.data);
-          if (parsed && parsed.path === '/' && parsed.data) {
-            onUpdate(parsed.data, 'Firebase Realtime');
-          } else if (parsed && parsed.data && typeof parsed.data === 'object') {
-            onUpdate(parsed.data, 'Firebase Realtime');
+          if (!parsed) return;
+
+          if (parsed.path === '/') {
+            if (parsed.data && typeof parsed.data === 'object') {
+              for (const [cId, cPayload] of Object.entries(parsed.data)) {
+                if (cPayload && typeof cPayload === 'object') {
+                  clientsMap[cId] = {
+                    ...cPayload,
+                    lastPing: cPayload.meta?.timestamp || Date.now()
+                  };
+                }
+              }
+              onClientsUpdate(clientsMap, 'Firebase Realtime', null);
+            }
+          } else if (parsed.path && parsed.path.startsWith('/')) {
+            const parts = parsed.path.split('/').filter(Boolean);
+            const cId = parts[0];
+            if (cId) {
+              if (parts.length === 1) {
+                if (parsed.data === null) {
+                  delete clientsMap[cId];
+                } else if (typeof parsed.data === 'object') {
+                  clientsMap[cId] = {
+                    ...parsed.data,
+                    lastPing: parsed.data.meta?.timestamp || Date.now()
+                  };
+                }
+              } else if (clientsMap[cId]) {
+                const subProp = parts[1];
+                clientsMap[cId][subProp] = parsed.data;
+                clientsMap[cId].lastPing = Date.now();
+              }
+              onClientsUpdate(clientsMap, 'Firebase Realtime', cId);
+            }
           }
-        } catch (e) {}
+        } catch (e) {
+          console.warn('Erro ao processar SSE put:', e);
+        }
       });
 
       eventSource.addEventListener('patch', (event) => {
         try {
           const parsed = JSON.parse(event.data);
-          if (parsed && parsed.data) {
-            onUpdate(parsed.data, 'Firebase Realtime');
+          if (!parsed) return;
+          const parts = (parsed.path || '').split('/').filter(Boolean);
+          const cId = parts[0];
+          if (cId && parsed.data && typeof parsed.data === 'object') {
+            if (!clientsMap[cId]) clientsMap[cId] = {};
+            Object.assign(clientsMap[cId], parsed.data);
+            clientsMap[cId].lastPing = Date.now();
+            onClientsUpdate(clientsMap, 'Firebase Realtime', cId);
           }
-        } catch (e) {}
+        } catch (e) {
+          console.warn('Erro ao processar SSE patch:', e);
+        }
       });
 
       eventSource.onerror = () => {
@@ -240,11 +327,19 @@ export function startAdminListening(sessionId, onUpdate) {
     }
   }
 
-  // 3. Fallback inicial de leitura em cache
+  // 3. Fallback inicial de leitura em cache local
   try {
-    const saved = localStorage.getItem('carta_last_payload_' + sessionId);
-    if (saved) {
-      onUpdate(JSON.parse(saved), 'Cache');
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('carta_client_' + sessionId + '_')) {
+        const item = JSON.parse(localStorage.getItem(key));
+        if (item && item.clientId) {
+          clientsMap[item.clientId] = { ...item, lastPing: Date.now() };
+        }
+      }
+    }
+    if (Object.keys(clientsMap).length > 0) {
+      onClientsUpdate(clientsMap, 'Cache Local', null);
     }
   } catch (e) {}
 }

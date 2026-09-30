@@ -42,6 +42,17 @@
     <!-- Palco do Simulador de Aparelho com Minimapa Integrado -->
     <section class="simulator-stage" id="stageContainer">
 
+      <!-- Barra Superior de Abas / Dispositivos Conectados -->
+      <div class="client-tabs-bar" id="clientTabsBar">
+        <span class="client-tabs-count-badge" id="clientCountBadge">Aguardando</span>
+        <div class="client-tabs-list" id="clientTabsList">
+          <button class="client-tab-btn active" data-id="auto">
+            <span class="tab-dot"></span>
+            <span class="tab-label">⚡ Foco Automático</span>
+          </button>
+        </div>
+      </div>
+
       <div class="stage-emulator-layout">
 
         <!-- Chassis do Aparelho (Simula o smartphone/tela do leitor) -->
@@ -93,6 +104,15 @@
         <div class="sidebar-card-title">
           <span>Status de Presença</span>
           <span id="transportBadge" style="font-size: 0.65rem; color: #60a5fa;">Verificando...</span>
+        </div>
+
+        <!-- Alerta Informativo de Múltiplos Dispositivos / Abas -->
+        <div id="multiDeviceAlert" class="multi-device-alert" style="display: none;">
+          <span class="multi-device-icon">👥</span>
+          <div class="multi-device-text">
+            <strong id="multiDeviceTitle">2 abas detectadas</strong>
+            <span id="multiDeviceSub">Acompanhando automaticamente a aba ativa</span>
+          </div>
         </div>
 
         <!-- Alerta de Releitura (Ativa quando o leitor volta para ler trecho anterior) -->
@@ -206,6 +226,12 @@
     const mirrorIframe = document.getElementById('mirrorIframe');
     const transportBadge = document.getElementById('transportBadge');
 
+    const clientCountBadge = document.getElementById('clientCountBadge');
+    const clientTabsList = document.getElementById('clientTabsList');
+    const multiDeviceAlert = document.getElementById('multiDeviceAlert');
+    const multiDeviceTitle = document.getElementById('multiDeviceTitle');
+    const multiDeviceSub = document.getElementById('multiDeviceSub');
+
     const readerStatusBanner = document.getElementById('readerStatusBanner');
     const readerStatusTitle = document.getElementById('readerStatusTitle');
     const readerStatusSub = document.getElementById('readerStatusSub');
@@ -231,9 +257,15 @@
     const infoMaxScroll = document.getElementById('infoMaxScroll');
     const infoDeviceGuess = document.getElementById('infoDeviceGuess');
 
-    // Estado da telemetria
+    // Estado da telemetria e multi-clientes
     let currentSessionId = new URLSearchParams(window.location.search).get('session') || 'leitor-principal';
     sessionIdInput.value = currentSessionId;
+
+    let clients = {}; // clientId -> payload
+    let selectedClientId = 'auto'; // 'auto' ou clientId específico
+    let focusedClientId = null;
+    let knownClients = new Set();
+    let disconnectedClients = new Set();
 
     let lastPayload = null;
     let appliedWidth = 0;
@@ -250,7 +282,6 @@
     let maxScrollReached = 0;
     let isReReading = false;
     let timelineEvents = [];
-    let hasLoggedInitialOpen = false;
     let hasLoggedCompletion = false;
     let lastHighlightedElement = null;
 
@@ -271,7 +302,7 @@
 
       eventCountBadge.textContent = `${timelineEvents.length} eventos`;
 
-      timelineList.innerHTML = timelineEvents.slice(0, 15).map(ev => {
+      timelineList.innerHTML = timelineEvents.slice(0, 18).map(ev => {
         let dotClass = 'timeline-dot';
         if (ev.tipo === 'releitura') dotClass += ' highlight';
         else if (ev.tipo === 'pausa') dotClass += ' warning';
@@ -349,6 +380,9 @@
     // Mudança manual de Sessão
     sessionIdInput.addEventListener('change', () => {
       currentSessionId = sessionIdInput.value.trim() || 'leitor-principal';
+      clients = {};
+      knownClients.clear();
+      disconnectedClients.clear();
       recarregarIframe();
       conectar();
     });
@@ -369,7 +403,7 @@
       screenFrame.style.width = width + 'px';
       screenFrame.style.height = height + 'px';
 
-      const stageH = stageContainer.clientHeight - 40;
+      const stageH = stageContainer.clientHeight - 60; // reserva espaço para a barra de abas
       const stageW = stageContainer.clientWidth - 100; // reserva espaço para o minimapa
       const totalW = width + 20;
       const totalH = height + 20;
@@ -473,38 +507,157 @@
       }
     }
 
-    // Watchdog contínuo (250ms)
+    // ==========================================
+    // LÓGICA INTELIGENTE DE MULTI-ABAS & CLIENTES
+    // ==========================================
+
+    function getActiveClientsList() {
+      const now = Date.now();
+      const list = [];
+      for (const [id, c] of Object.entries(clients)) {
+        if (!c) continue;
+        const timeSincePing = now - (c.lastPing || c.meta?.timestamp || 0);
+        // Ativo se respondeu nos últimos 15 segundos e não está marcado offline
+        if (c.isOnline !== false && timeSincePing < 15000) {
+          list.push(c);
+        }
+      }
+      return list;
+    }
+
+    function resolveFocusedClient() {
+      const activeList = getActiveClientsList();
+
+      if (activeList.length === 0) {
+        // Fallback: pega o cliente mais recente de todo o histórico para não zerar a tela
+        const all = Object.values(clients);
+        if (all.length === 0) return null;
+        all.sort((a, b) => (b.meta?.timestamp || b.lastPing || 0) - (a.meta?.timestamp || a.lastPing || 0));
+        return all[0];
+      }
+
+      // Se o operador fixou manualmente uma aba/aparelho:
+      if (selectedClientId !== 'auto') {
+        const manual = clients[selectedClientId];
+        if (manual) return manual;
+      }
+
+      // Modo Foco Automático:
+      // 1. Prioriza abas que estão ativas no primeiro plano (isTabActive === true)
+      const foregroundClients = activeList.filter(c => c.isTabActive === true);
+      if (foregroundClients.length > 0) {
+        foregroundClients.sort((a, b) => (b.meta?.timestamp || b.lastPing || 0) - (a.meta?.timestamp || a.lastPing || 0));
+        return foregroundClients[0];
+      }
+
+      // 2. Se todas estão em segundo plano (minimizadas), pega a que interagiu mais recentemente
+      activeList.sort((a, b) => (b.meta?.timestamp || b.lastPing || 0) - (a.meta?.timestamp || a.lastPing || 0));
+      return activeList[0];
+    }
+
+    function renderClientTabs() {
+      const activeList = getActiveClientsList();
+      const count = activeList.length;
+
+      if (count <= 1) {
+        clientCountBadge.className = 'client-tabs-count-badge';
+        clientCountBadge.textContent = count === 1 ? '1 dispositivo' : 'Aguardando';
+        multiDeviceAlert.style.display = 'none';
+      } else {
+        clientCountBadge.className = 'client-tabs-count-badge multi';
+        clientCountBadge.textContent = `👥 ${count} abas/aparelhos`;
+        multiDeviceAlert.style.display = 'flex';
+        multiDeviceTitle.textContent = `${count} abas ou aparelhos abertos`;
+
+        if (selectedClientId === 'auto') {
+          const focused = resolveFocusedClient();
+          const label = focused ? (focused.deviceLabel || 'Aba') : 'Aba Ativa';
+          multiDeviceSub.textContent = `Foco inteligente na aba em leitura (${label})`;
+        } else {
+          multiDeviceSub.textContent = `Visualização fixada manualmente em uma aba`;
+        }
+      }
+
+      // Constrói os botões da barra superior
+      let html = `
+        <button class="client-tab-btn ${selectedClientId === 'auto' ? 'active' : ''}" data-id="auto" title="Focar automaticamente na aba que o leitor estiver rolando">
+          <span class="tab-dot ${count > 0 ? 'live' : ''}"></span>
+          <span class="tab-label">⚡ Foco Automático</span>
+        </button>
+      `;
+
+      activeList.forEach((c, idx) => {
+        const isSelected = selectedClientId === c.clientId;
+        const isForeground = c.isTabActive === true;
+        const dotStatus = isForeground ? 'live' : 'background';
+        const label = c.deviceLabel || `Aba ${idx + 1}`;
+        const statusText = isForeground ? 'Lendo' : '2º Plano';
+
+        html += `
+          <button class="client-tab-btn ${isSelected ? 'active' : ''}" data-id="${c.clientId}" title="Clique para fixar a visualização nesta aba">
+            <span class="tab-dot ${dotStatus}"></span>
+            <span class="tab-label">${label} • ${statusText}</span>
+          </button>
+        `;
+      });
+
+      clientTabsList.innerHTML = html;
+
+      // Adiciona ouvintes de clique nos botões
+      clientTabsList.querySelectorAll('.client-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          selectedClientId = id;
+          atualizarInterfaceCompleta();
+        });
+      });
+    }
+
+    // Watchdog contínuo (250ms) com inteligência multi-dispositivos
     setInterval(() => {
-      if (!lastPayload) return;
+      const activeList = getActiveClientsList();
+      const focused = resolveFocusedClient();
 
-      const tempoSemSinal = Date.now() - lastHeartbeatTime;
-
-      if (lastPayload.isOnline === false || tempoSemSinal > 8000) {
+      if (!focused || activeList.length === 0) {
         atualizarEstadoPresenca('offline');
-      } else if (lastPayload.isTabActive === false || tempoSemSinal > 2300) {
+        renderClientTabs();
+        return;
+      }
+
+      const now = Date.now();
+      const timeSincePing = now - (focused.lastPing || focused.meta?.timestamp || 0);
+
+      // Alguma aba está ativamente no primeiro plano com sinal recente?
+      const anyForeground = activeList.some(c => c.isTabActive === true && (now - (c.lastPing || c.meta?.timestamp || 0)) < 2300);
+
+      if (focused.isOnline === false || timeSincePing > 8000) {
+        atualizarEstadoPresenca('offline');
+      } else if (!anyForeground) {
         atualizarEstadoPresenca('background');
       } else {
         atualizarEstadoPresenca('online');
       }
+
+      renderClientTabs();
     }, 250);
 
-    // Processa a telemetria recebida do leitor
+    // Processa a telemetria do cliente em foco
     function processarAtualizacaoLeitor(payload, transportSource) {
+      if (!payload) return;
       lastPayload = payload;
       lastHeartbeatTime = Date.now();
 
-      transportBadge.textContent = transportSource || 'Conectado';
-
-      // Evento de abertura inicial
-      if (!hasLoggedInitialOpen) {
-        hasLoggedInitialOpen = true;
-        adicionarEventoLinhaDoTempo('🚀', 'Abriu a carta e iniciou a sessão', 'sucesso');
+      if (transportSource) {
+        transportBadge.textContent = transportSource;
       }
 
       // 1. Status do Leitor
+      const activeList = getActiveClientsList();
+      const anyForeground = activeList.some(c => c.isTabActive === true);
+
       if (payload.isOnline === false) {
         atualizarEstadoPresenca('offline');
-      } else if (payload.isTabActive === false) {
+      } else if (!anyForeground) {
         atualizarEstadoPresenca('background');
       } else {
         atualizarEstadoPresenca('online');
@@ -526,7 +679,7 @@
         const { width, height } = payload.viewport;
         infoResolution.textContent = `${width} × ${height}`;
         infoRatio.textContent = (width / height).toFixed(2) + ' : 1';
-        infoDeviceGuess.textContent = estimarDispositivo(width, height);
+        infoDeviceGuess.textContent = payload.deviceLabel || estimarDispositivo(width, height);
 
         if (width !== appliedWidth || Math.abs(height - appliedHeight) > 60) {
           appliedWidth = width;
@@ -595,11 +748,54 @@
       }
     }
 
+    function atualizarInterfaceCompleta(transportSource) {
+      renderClientTabs();
+
+      const focused = resolveFocusedClient();
+      if (!focused) return;
+
+      const previousFocusedId = focusedClientId;
+      focusedClientId = focused.clientId;
+
+      if (previousFocusedId && previousFocusedId !== focusedClientId) {
+        // Mudou o cliente/dispositivo em foco: adapta escala imediatamente
+        appliedWidth = 0;
+        appliedHeight = 0;
+        isFirstSync = true;
+      }
+
+      processarAtualizacaoLeitor(focused, transportSource);
+    }
+
     // Inicialização do ouvinte
     function conectar() {
       transportBadge.textContent = isFirebaseConfigured() ? 'Firebase Realtime' : 'Modo Local (Abas)';
-      startAdminListening(currentSessionId, (payload, source) => {
-        processarAtualizacaoLeitor(payload, source);
+      startAdminListening(currentSessionId, (clientsMap, source, updatedClientId) => {
+        clients = clientsMap;
+
+        // Monitora novos clientes para registrar na linha do tempo
+        for (const [cId, c] of Object.entries(clients)) {
+          if (!c) continue;
+          if (!knownClients.has(cId)) {
+            knownClients.add(cId);
+            if (knownClients.size === 1) {
+              adicionarEventoLinhaDoTempo('🚀', `Abriu a carta (${c.deviceLabel || 'Dispositivo'})`, 'sucesso');
+            } else {
+              adicionarEventoLinhaDoTempo('👥', `Nova aba/dispositivo conectado: ${c.deviceLabel || 'Dispositivo'}`, 'normal');
+            }
+          }
+
+          if (c.isOnline === false && !disconnectedClients.has(cId)) {
+            disconnectedClients.add(cId);
+            if (getActiveClientsList().length > 0) {
+              adicionarEventoLinhaDoTempo('✕', `Uma das abas foi fechada (${c.deviceLabel || 'Aba'})`, 'pausa');
+            }
+          } else if (c.isOnline === true && disconnectedClients.has(cId)) {
+            disconnectedClients.delete(cId);
+          }
+        }
+
+        atualizarInterfaceCompleta(source);
       });
     }
 
