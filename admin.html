@@ -39,17 +39,48 @@
   <!-- Espaço de Trabalho Principal -->
   <main class="admin-workspace">
 
-    <!-- Palco do Simulador de Aparelho -->
+    <!-- Palco do Simulador de Aparelho com Minimapa Integrado -->
     <section class="simulator-stage" id="stageContainer">
 
-      <!-- Chassis do Aparelho (Simula o smartphone/tela do leitor) -->
-      <div id="deviceChassis" class="device-chassis-outer">
-        <div id="deviceScreenFrame" class="device-screen-frame" style="width: 390px; height: 844px;">
-          <iframe id="mirrorIframe" class="mirror-iframe" src="index.html?session=leitor-principal&mirror=1"></iframe>
-          <div id="screenOverlay" class="screen-status-overlay">
-            <span id="screenOverlayPill" class="screen-status-pill">Aba em Segundo Plano</span>
+      <div class="stage-emulator-layout">
+
+        <!-- Chassis do Aparelho (Simula o smartphone/tela do leitor) -->
+        <div id="deviceChassis" class="device-chassis-outer">
+          <div id="deviceScreenFrame" class="device-screen-frame" style="width: 390px; height: 844px;">
+            <iframe id="mirrorIframe" class="mirror-iframe" src="index.html?session=leitor-principal&mirror=1"></iframe>
+            <div id="screenOverlay" class="screen-status-overlay">
+              <span id="screenOverlayPill" class="screen-status-pill">Aba em Segundo Plano</span>
+            </div>
           </div>
         </div>
+
+        <!-- Minimapa Panorâmico da Carta Completa -->
+        <div class="letter-minimap-track" id="minimapTrack" title="Visão Panorâmica da Carta Completa">
+          <div class="minimap-header-tag">VISÃO GERAL</div>
+          <div class="minimap-document-body">
+            <div class="minimap-line line-title"></div>
+            <div class="minimap-line"></div>
+            <div class="minimap-line"></div>
+            <div class="minimap-line line-short"></div>
+            <div class="minimap-line line-heading"></div>
+            <div class="minimap-line"></div>
+            <div class="minimap-line"></div>
+            <div class="minimap-line line-quote"></div>
+            <div class="minimap-line"></div>
+            <div class="minimap-line line-heading"></div>
+            <div class="minimap-line"></div>
+            <div class="minimap-line"></div>
+            <div class="minimap-line line-heading"></div>
+            <div class="minimap-line"></div>
+            <div class="minimap-line"></div>
+            <div class="minimap-line line-signature"></div>
+          </div>
+          <!-- Janela deslizante que indica onde o leitor está na carta inteira -->
+          <div class="minimap-viewport-slider" id="minimapSlider">
+            <span class="minimap-slider-badge" id="minimapBadge">0%</span>
+          </div>
+        </div>
+
       </div>
 
     </section>
@@ -57,11 +88,17 @@
     <!-- Barra Lateral de Telemetria -->
     <aside class="admin-sidebar">
 
-      <!-- Status do Leitor -->
+      <!-- Status do Leitor & Métricas de Tempo -->
       <div class="sidebar-card">
         <div class="sidebar-card-title">
           <span>Status de Presença</span>
           <span id="transportBadge" style="font-size: 0.65rem; color: #60a5fa;">Verificando...</span>
+        </div>
+
+        <!-- Alerta de Releitura (Ativa quando o leitor volta para ler trecho anterior) -->
+        <div id="rereadBadge" class="reread-alert-badge" style="display: none;">
+          <span class="reread-pulse-icon">↺</span>
+          <span id="rereadText">O leitor voltou para reler este trecho!</span>
         </div>
 
         <div id="readerStatusBanner" class="reader-status-banner offline">
@@ -69,6 +106,21 @@
           <div>
             <div id="readerStatusTitle" class="status-label-main">Aguardando Conexão</div>
             <div id="readerStatusSub" class="status-label-sub">Envie o link para o leitor abrir a página</div>
+          </div>
+        </div>
+
+        <!-- Cronômetro Ativo & Tempo no Trecho Atual -->
+        <div class="reading-time-row">
+          <div class="time-block">
+            <span class="time-label">Tempo de Leitura</span>
+            <div class="time-value-group">
+              <span id="readingTimer" class="time-value">00:00</span>
+              <span id="timerPill" class="timer-live-dot paused" title="Contador Ativo"></span>
+            </div>
+          </div>
+          <div class="time-block">
+            <span class="time-label">Neste Trecho</span>
+            <span id="sectionTimer" class="time-value">0s</span>
           </div>
         </div>
 
@@ -115,8 +167,21 @@
           </div>
         </div>
 
-        <div style="margin-top: 1rem; font-size: 0.75rem; color: var(--admin-text-muted); line-height: 1.4;">
+        <div style="margin-top: 0.85rem; font-size: 0.75rem; color: var(--admin-text-muted); line-height: 1.4;">
           <strong>Dispositivo provável:</strong> <span id="infoDeviceGuess">—</span>
+        </div>
+      </div>
+
+      <!-- Linha do Tempo da Sessão (Histórico ao Vivo) -->
+      <div class="sidebar-card">
+        <div class="sidebar-card-title">
+          <span>Linha do Tempo ao Vivo</span>
+          <span style="font-size: 0.7rem; color: #38bdf8;" id="eventCountBadge">0 eventos</span>
+        </div>
+        <div class="session-timeline-container" id="timelineContainer">
+          <ul class="session-timeline-list" id="timelineList">
+            <li class="timeline-empty">Aguardando início da leitura...</li>
+          </ul>
         </div>
       </div>
 
@@ -148,6 +213,18 @@
     const progressBarFill = document.getElementById('progressBarFill');
     const readingSnippet = document.getElementById('readingSnippet');
 
+    const readingTimer = document.getElementById('readingTimer');
+    const timerPill = document.getElementById('timerPill');
+    const sectionTimer = document.getElementById('sectionTimer');
+    const rereadBadge = document.getElementById('rereadBadge');
+    const rereadText = document.getElementById('rereadText');
+    const timelineList = document.getElementById('timelineList');
+    const eventCountBadge = document.getElementById('eventCountBadge');
+
+    const minimapTrack = document.getElementById('minimapTrack');
+    const minimapSlider = document.getElementById('minimapSlider');
+    const minimapBadge = document.getElementById('minimapBadge');
+
     const infoResolution = document.getElementById('infoResolution');
     const infoRatio = document.getElementById('infoRatio');
     const infoScrollY = document.getElementById('infoScrollY');
@@ -159,7 +236,6 @@
     sessionIdInput.value = currentSessionId;
 
     let lastPayload = null;
-    let offlineTimer = null;
     let appliedWidth = 0;
     let appliedHeight = 0;
 
@@ -167,14 +243,69 @@
     let currentScrollY = 0;
     let isFirstSync = true;
 
+    // Métricas de Cronômetro e Histórico
+    let activeReadingSeconds = 0;
+    let currentSectionSeconds = 0;
+    let lastSectionIndex = null;
+    let maxScrollReached = 0;
+    let isReReading = false;
+    let timelineEvents = [];
+    let hasLoggedInitialOpen = false;
+    let hasLoggedCompletion = false;
+    let lastHighlightedElement = null;
+
+    function formatTime(totalSecs) {
+      const mins = Math.floor(totalSecs / 60);
+      const secs = totalSecs % 60;
+      return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    function getNowFormatted() {
+      const d = new Date();
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+    }
+
+    function adicionarEventoLinhaDoTempo(icone, texto, tipo = 'normal') {
+      const timeStr = getNowFormatted();
+      timelineEvents.unshift({ timeStr, icone, texto, tipo });
+
+      eventCountBadge.textContent = `${timelineEvents.length} eventos`;
+
+      timelineList.innerHTML = timelineEvents.slice(0, 15).map(ev => {
+        let dotClass = 'timeline-dot';
+        if (ev.tipo === 'releitura') dotClass += ' highlight';
+        else if (ev.tipo === 'pausa') dotClass += ' warning';
+        else if (ev.tipo === 'sucesso') dotClass += ' success';
+
+        return `
+          <li class="timeline-item">
+            <span class="${dotClass}"></span>
+            <span class="timeline-time">${ev.timeStr}</span>
+            <span class="timeline-text">${ev.icone} ${ev.texto}</span>
+          </li>
+        `;
+      }).join('');
+    }
+
+    // Cronômetro que corre apenas durante a leitura ativa
+    setInterval(() => {
+      if (currentVisualState === 'online') {
+        activeReadingSeconds++;
+        currentSectionSeconds++;
+        readingTimer.textContent = formatTime(activeReadingSeconds);
+        sectionTimer.textContent = `${currentSectionSeconds}s`;
+        timerPill.className = 'timer-live-dot';
+      } else {
+        timerPill.className = 'timer-live-dot paused';
+      }
+    }, 1000);
+
     // Loop contínuo a 60fps/120fps com interpolação física suave (LERP)
-    // Transforma atualizações de rede discretas em movimento fluido idêntico ao do celular
     function animarScrollEspelho() {
       if (mirrorIframe && mirrorIframe.contentWindow) {
         const diff = targetScrollY - currentScrollY;
 
         if (Math.abs(diff) > 0.1) {
-          // Fator de suavização (LERP) rápido e sem atraso percebido
           currentScrollY += diff * 0.28;
           try {
             mirrorIframe.contentWindow.scrollTo(0, currentScrollY);
@@ -235,21 +366,18 @@
     function recalcularEscalaMockup(width, height) {
       if (!width || !height) return;
 
-      // Aplica a largura e altura EXATAS diretamente na tela interna do leitor
       screenFrame.style.width = width + 'px';
       screenFrame.style.height = height + 'px';
 
-      // Auto-Fit adaptativo sempre ativo por padrão
-      const stageH = stageContainer.clientHeight - 40; // margem livre no palco
-      const stageW = stageContainer.clientWidth - 40;
-      const totalW = width + 20; // 8px de moldura externa
+      const stageH = stageContainer.clientHeight - 40;
+      const stageW = stageContainer.clientWidth - 100; // reserva espaço para o minimapa
+      const totalW = width + 20;
       const totalH = height + 20;
 
       const scaleY = stageH / totalH;
       const scaleW = stageW / totalW;
       let scale = Math.min(scaleY, scaleW);
 
-      // Não aumenta além de 100%, reduz proporcionalmente apenas se necessário para caber na tela
       if (scale > 1) scale = 1;
       scale = Math.max(0.2, scale);
 
@@ -263,11 +391,52 @@
       }
     });
 
+    // Atualiza a janela deslizante do minimapa
+    function atualizarMinimapa(scrollY, maxY, viewportHeight) {
+      if (!minimapTrack || !minimapSlider) return;
+
+      const trackHeight = minimapTrack.clientHeight - 38;
+      if (trackHeight <= 0) return;
+
+      const pct = maxY > 0 ? Math.min(100, Math.max(0, (scrollY / maxY) * 100)) : 0;
+      minimapBadge.textContent = `${Math.round(pct)}%`;
+
+      const docHeight = (maxY || 1) + (viewportHeight || 700);
+      const sliderH = Math.max(28, Math.min(100, (viewportHeight / docHeight) * trackHeight));
+      minimapSlider.style.height = `${sliderH}px`;
+
+      const maxTop = trackHeight - sliderH;
+      const topPos = 28 + (pct / 100) * maxTop;
+      minimapSlider.style.top = `${topPos}px`;
+    }
+
+    // Destaque dourado sutil no parágrafo ativo dentro do espelho
+    function atualizarDestaqueParagrafoNoEspelho(sectionIndex) {
+      if (!mirrorIframe || !mirrorIframe.contentDocument) return;
+
+      try {
+        const doc = mirrorIframe.contentDocument;
+        const elements = doc.querySelectorAll('.letter-body p, .letter-body blockquote, .letter-section-title');
+
+        if (elements && elements.length > 0) {
+          const targetEl = elements[sectionIndex - 1];
+          if (targetEl && targetEl !== lastHighlightedElement) {
+            if (lastHighlightedElement) {
+              lastHighlightedElement.classList.remove('active-reading-focus');
+            }
+            targetEl.classList.add('active-reading-focus');
+            lastHighlightedElement = targetEl;
+          }
+        }
+      } catch (e) {}
+    }
+
     let lastHeartbeatTime = 0;
     let currentVisualState = 'offline';
 
     function atualizarEstadoPresenca(estado) {
       if (currentVisualState === estado) return;
+      const anterior = currentVisualState;
       currentVisualState = estado;
 
       if (estado === 'offline') {
@@ -278,6 +447,9 @@
         screenOverlay.className = 'screen-status-overlay visible';
         screenOverlayPill.className = 'screen-status-pill offline';
         screenOverlayPill.textContent = 'Leitor Desconectado';
+        if (anterior === 'online' || anterior === 'background') {
+          adicionarEventoLinhaDoTempo('🔴', 'Fechou o navegador / desconectou', 'pausa');
+        }
       } else if (estado === 'background') {
         readerStatusBanner.className = 'reader-status-banner background-tab';
         readerStatusTitle.textContent = 'Aba em Segundo Plano';
@@ -286,17 +458,22 @@
         screenOverlay.className = 'screen-status-overlay visible';
         screenOverlayPill.className = 'screen-status-pill';
         screenOverlayPill.textContent = 'Aba em Segundo Plano';
+        if (anterior === 'online') {
+          adicionarEventoLinhaDoTempo('⏸️', 'Pausou a leitura (minimizou o app)', 'pausa');
+        }
       } else {
         readerStatusBanner.className = 'reader-status-banner';
         readerStatusTitle.textContent = 'Lendo Agora (Ao Vivo)';
         readerStatusSub.textContent = 'Interagindo com a carta no momento';
         screenFrame.className = 'device-screen-frame';
         screenOverlay.className = 'screen-status-overlay';
+        if (anterior === 'background') {
+          adicionarEventoLinhaDoTempo('▶️', 'Retomou a leitura da carta', 'normal');
+        }
       }
     }
 
-    // Watchdog contínuo (250ms): se o app for minimizado e o celular congelar o JavaScript,
-    // o fluxo de batimentos cessa e o Admin detecta a ausência em ~2 segundos com 100% de garantia!
+    // Watchdog contínuo (250ms)
     setInterval(() => {
       if (!lastPayload) return;
 
@@ -318,7 +495,13 @@
 
       transportBadge.textContent = transportSource || 'Conectado';
 
-      // 1. Status do Leitor avaliado de imediato
+      // Evento de abertura inicial
+      if (!hasLoggedInitialOpen) {
+        hasLoggedInitialOpen = true;
+        adicionarEventoLinhaDoTempo('🚀', 'Abriu a carta e iniciou a sessão', 'sucesso');
+      }
+
+      // 1. Status do Leitor
       if (payload.isOnline === false) {
         atualizarEstadoPresenca('offline');
       } else if (payload.isTabActive === false) {
@@ -332,6 +515,12 @@
       progressPercentLabel.textContent = `${pct}%`;
       progressBarFill.style.width = `${pct}%`;
 
+      // Detecção de Conclusão da Leitura
+      if (pct >= 98 && !hasLoggedCompletion) {
+        hasLoggedCompletion = true;
+        adicionarEventoLinhaDoTempo('🏁', 'Concluiu a leitura e chegou na assinatura!', 'sucesso');
+      }
+
       // 3. Dimensões e Emulação da Tela
       if (payload.viewport) {
         const { width, height } = payload.viewport;
@@ -339,7 +528,6 @@
         infoRatio.textContent = (width / height).toFixed(2) + ' : 1';
         infoDeviceGuess.textContent = estimarDispositivo(width, height);
 
-        // Estabilidade: só recalcula a estrutura se a dimensão mudar de verdade (ex: girar tela)
         if (width !== appliedWidth || Math.abs(height - appliedHeight) > 60) {
           appliedWidth = width;
           appliedHeight = height;
@@ -364,10 +552,42 @@
         } else {
           targetScrollY = payload.scroll.y;
         }
+
+        // Atualiza Minimapa Panorâmico
+        atualizarMinimapa(payload.scroll.y, payload.scroll.maxY, payload.viewport ? payload.viewport.height : 700);
+
+        // Detecção de Releitura (quando rola para trás mais de 350px após ter avançado)
+        if (payload.scroll.y > maxScrollReached) {
+          maxScrollReached = payload.scroll.y;
+          if (isReReading) {
+            isReReading = false;
+            rereadBadge.style.display = 'none';
+          }
+        } else if (maxScrollReached > 600 && payload.scroll.y < maxScrollReached - 350) {
+          if (!isReReading) {
+            isReReading = true;
+            rereadBadge.style.display = 'flex';
+            adicionarEventoLinhaDoTempo('↺', 'Voltou para reler trecho anterior', 'releitura');
+          }
+        }
       }
 
-      // 6. Trecho em foco
+      // 5. Trecho em foco e Destaque no Espelho
       if (payload.activeSection && payload.activeSection.textSnippet) {
+        const sectionIdx = payload.activeSection.index;
+
+        if (sectionIdx !== lastSectionIndex) {
+          lastSectionIndex = sectionIdx;
+          currentSectionSeconds = 0;
+
+          // Se for título de seção, registra no histórico
+          if (payload.activeSection.tag === 'h2') {
+            adicionarEventoLinhaDoTempo('📖', `Entrou na ${payload.activeSection.textSnippet}`, 'normal');
+          }
+
+          atualizarDestaqueParagrafoNoEspelho(sectionIdx);
+        }
+
         const snippetHtml = `<strong>Seção ${payload.activeSection.index}/${payload.activeSection.total}:</strong><br>"${payload.activeSection.textSnippet}"`;
         if (readingSnippet.innerHTML !== snippetHtml) {
           readingSnippet.innerHTML = snippetHtml;
