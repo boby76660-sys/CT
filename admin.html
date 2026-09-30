@@ -817,12 +817,18 @@
         transportBadge.textContent = transportSource;
       }
 
-      // Captura o timestamp de início de leitura do dispositivo leitor
-      if (payload.readingStartedAt && payload.readingStartedAt > 0) {
-        // Só atualiza se for anterior ao atual (protege contra múltiplos dispositivos trocando o timestamp)
-        if (readerStartedAt === 0 || payload.readingStartedAt < readerStartedAt) {
-          readerStartedAt = payload.readingStartedAt;
+      // Captura o timestamp de início de leitura do dispositivo leitor.
+      // Fallback: se o leitor estiver numa versão antiga sem readingStartedAt, usa meta.timestamp
+      // do primeiro pacote recebido como aproximação do início da sessão.
+      const startTs = payload.readingStartedAt || 0;
+      if (startTs > 0) {
+        // Versão nova: usa o timestamp real de quando o leitor abriu a carta
+        if (readerStartedAt === 0 || startTs < readerStartedAt) {
+          readerStartedAt = startTs;
         }
+      } else if (readerStartedAt === 0 && payload.meta && payload.meta.timestamp > 0) {
+        // Fallback: usa o timestamp do primeiro pacote recebido (aproximado)
+        readerStartedAt = payload.meta.timestamp;
       }
 
       // 1. Status do Leitor
