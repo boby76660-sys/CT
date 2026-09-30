@@ -146,10 +146,18 @@ export function startReaderTracking(sessionId) {
       localStorage.setItem('carta_client_' + sessionId + '_' + clientId, JSON.stringify(payload));
     } catch (e) {}
 
-    // 2. Firebase Realtime Database isolado por cliente
+    // 2. Firebase Realtime Database isolado por cliente + espelho de compatibilidade
     if (dbUrl) {
       try {
         fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/clients/${clientId}.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          keepalive: true
+        }).catch(() => {});
+
+        // Mantém reader.json sincronizado para redundância total
+        fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/reader.json`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -175,10 +183,17 @@ export function startReaderTracking(sessionId) {
       localStorage.setItem('carta_client_' + sessionId + '_' + clientId, JSON.stringify(payload));
     } catch (e) {}
 
-    // 2. Firebase isolado
+    // 2. Firebase isolado + espelho
     if (dbUrl) {
       try {
         fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/clients/${clientId}.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          keepalive: true
+        }).catch(() => {});
+
+        fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/reader.json`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -246,56 +261,75 @@ export function startAdminListening(sessionId, onClientsUpdate) {
         const cId = payload.clientId || 'local_default';
         clientsMap[cId] = {
           ...payload,
-          lastPing: Date.now()
+          lastReceivedAt: Date.now()
         };
         onClientsUpdate(clientsMap, 'Local (Broadcast)', cId);
       }
     });
   }
 
-  // 2. Escuta via EventSource (SSE) direto do Firebase Realtime Database em /clients.json
+  // 2. Escuta via EventSource (SSE) direto do Firebase na sessão inteira (/sessoes/{sessionId}.json)
   if (dbUrl) {
     try {
-      const sseUrl = `${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/clients.json`;
+      const sseUrl = `${dbUrl}/sessoes/${encodeURIComponent(sessionId)}.json`;
       const eventSource = new EventSource(sseUrl);
 
       eventSource.addEventListener('put', (event) => {
         try {
           const parsed = JSON.parse(event.data);
           if (!parsed) return;
+          const now = Date.now();
 
+          // Snapshot raiz da sessão inteira: { clients: {...}, reader: {...} }
           if (parsed.path === '/') {
             if (parsed.data && typeof parsed.data === 'object') {
-              for (const [cId, cPayload] of Object.entries(parsed.data)) {
-                if (cPayload && typeof cPayload === 'object') {
-                  clientsMap[cId] = {
-                    ...cPayload,
-                    lastPing: cPayload.meta?.timestamp || Date.now()
-                  };
+              if (parsed.data.clients && typeof parsed.data.clients === 'object') {
+                for (const [cId, cPayload] of Object.entries(parsed.data.clients)) {
+                  if (cPayload && typeof cPayload === 'object') {
+                    clientsMap[cId] = {
+                      ...cPayload,
+                      lastReceivedAt: now
+                    };
+                  }
                 }
+              } else if (parsed.data.reader && typeof parsed.data.reader === 'object') {
+                const r = parsed.data.reader;
+                const cId = r.clientId || 'default_reader';
+                clientsMap[cId] = {
+                  ...r,
+                  lastReceivedAt: now
+                };
               }
               onClientsUpdate(clientsMap, 'Firebase Realtime', null);
             }
-          } else if (parsed.path && parsed.path.startsWith('/')) {
-            const parts = parsed.path.split('/').filter(Boolean);
-            const cId = parts[0];
+          } else if (parsed.path && parsed.path.startsWith('/clients/')) {
+            const parts = parsed.path.split('/').filter(Boolean); // ['clients', 'cId', ...]
+            const cId = parts[1];
             if (cId) {
-              if (parts.length === 1) {
+              if (parts.length === 2) {
                 if (parsed.data === null) {
                   delete clientsMap[cId];
                 } else if (typeof parsed.data === 'object') {
                   clientsMap[cId] = {
                     ...parsed.data,
-                    lastPing: parsed.data.meta?.timestamp || Date.now()
+                    lastReceivedAt: now
                   };
                 }
               } else if (clientsMap[cId]) {
-                const subProp = parts[1];
+                const subProp = parts[2];
                 clientsMap[cId][subProp] = parsed.data;
-                clientsMap[cId].lastPing = Date.now();
+                clientsMap[cId].lastReceivedAt = now;
               }
               onClientsUpdate(clientsMap, 'Firebase Realtime', cId);
             }
+          } else if (parsed.path === '/reader' && parsed.data && typeof parsed.data === 'object') {
+            const r = parsed.data;
+            const cId = r.clientId || 'default_reader';
+            clientsMap[cId] = {
+              ...r,
+              lastReceivedAt: now
+            };
+            onClientsUpdate(clientsMap, 'Firebase Realtime', cId);
           }
         } catch (e) {
           console.warn('Erro ao processar SSE put:', e);
@@ -306,12 +340,20 @@ export function startAdminListening(sessionId, onClientsUpdate) {
         try {
           const parsed = JSON.parse(event.data);
           if (!parsed) return;
+          const now = Date.now();
           const parts = (parsed.path || '').split('/').filter(Boolean);
-          const cId = parts[0];
-          if (cId && parsed.data && typeof parsed.data === 'object') {
+
+          if (parts[0] === 'clients' && parts[1]) {
+            const cId = parts[1];
             if (!clientsMap[cId]) clientsMap[cId] = {};
             Object.assign(clientsMap[cId], parsed.data);
-            clientsMap[cId].lastPing = Date.now();
+            clientsMap[cId].lastReceivedAt = now;
+            onClientsUpdate(clientsMap, 'Firebase Realtime', cId);
+          } else if (parts[0] === 'reader' && parsed.data && typeof parsed.data === 'object') {
+            const cId = parsed.data.clientId || 'default_reader';
+            if (!clientsMap[cId]) clientsMap[cId] = {};
+            Object.assign(clientsMap[cId], parsed.data);
+            clientsMap[cId].lastReceivedAt = now;
             onClientsUpdate(clientsMap, 'Firebase Realtime', cId);
           }
         } catch (e) {
@@ -334,7 +376,7 @@ export function startAdminListening(sessionId, onClientsUpdate) {
       if (key && key.startsWith('carta_client_' + sessionId + '_')) {
         const item = JSON.parse(localStorage.getItem(key));
         if (item && item.clientId) {
-          clientsMap[item.clientId] = { ...item, lastPing: Date.now() };
+          clientsMap[item.clientId] = { ...item, lastReceivedAt: Date.now() };
         }
       }
     }

@@ -466,7 +466,7 @@
     }
 
     let lastHeartbeatTime = 0;
-    let currentVisualState = 'offline';
+    let currentVisualState = null; // Inicia null para garantir transição imediata no primeiro pacote
 
     function atualizarEstadoPresenca(estado) {
       if (currentVisualState === estado) return;
@@ -516,9 +516,10 @@
       const list = [];
       for (const [id, c] of Object.entries(clients)) {
         if (!c) continue;
-        const timeSincePing = now - (c.lastPing || c.meta?.timestamp || 0);
-        // Ativo se respondeu nos últimos 15 segundos e não está marcado offline
-        if (c.isOnline !== false && timeSincePing < 15000) {
+        // Mede a idade pelo relógio local do Admin para imutabilidade contra desvio de horário
+        const timeSinceSignal = now - (c.lastReceivedAt || 0);
+        // Ativo se recebemos sinal nos últimos 12 segundos e não está explicitamente desconectado
+        if (c.isOnline !== false && timeSinceSignal < 12000) {
           list.push(c);
         }
       }
@@ -529,10 +530,10 @@
       const activeList = getActiveClientsList();
 
       if (activeList.length === 0) {
-        // Fallback: pega o cliente mais recente de todo o histórico para não zerar a tela
+        // Fallback: pega o cliente mais recente recebido para não zerar a tela
         const all = Object.values(clients);
         if (all.length === 0) return null;
-        all.sort((a, b) => (b.meta?.timestamp || b.lastPing || 0) - (a.meta?.timestamp || a.lastPing || 0));
+        all.sort((a, b) => (b.lastReceivedAt || 0) - (a.lastReceivedAt || 0));
         return all[0];
       }
 
@@ -546,16 +547,18 @@
       // 1. Prioriza abas que estão ativas no primeiro plano (isTabActive === true)
       const foregroundClients = activeList.filter(c => c.isTabActive === true);
       if (foregroundClients.length > 0) {
-        foregroundClients.sort((a, b) => (b.meta?.timestamp || b.lastPing || 0) - (a.meta?.timestamp || a.lastPing || 0));
+        foregroundClients.sort((a, b) => (b.lastReceivedAt || 0) - (a.lastReceivedAt || 0));
         return foregroundClients[0];
       }
 
       // 2. Se todas estão em segundo plano (minimizadas), pega a que interagiu mais recentemente
-      activeList.sort((a, b) => (b.meta?.timestamp || b.lastPing || 0) - (a.meta?.timestamp || a.lastPing || 0));
+      activeList.sort((a, b) => (b.lastReceivedAt || 0) - (a.lastReceivedAt || 0));
       return activeList[0];
     }
 
     function renderClientTabs() {
+      if (!clientCountBadge || !clientTabsList || !multiDeviceAlert) return;
+
       const activeList = getActiveClientsList();
       const count = activeList.length;
 
@@ -625,10 +628,10 @@
       }
 
       const now = Date.now();
-      const timeSincePing = now - (focused.lastPing || focused.meta?.timestamp || 0);
+      const timeSincePing = now - (focused.lastReceivedAt || 0);
 
       // Alguma aba está ativamente no primeiro plano com sinal recente?
-      const anyForeground = activeList.some(c => c.isTabActive === true && (now - (c.lastPing || c.meta?.timestamp || 0)) < 2300);
+      const anyForeground = activeList.some(c => c.isTabActive === true && (now - (c.lastReceivedAt || 0)) < 2300);
 
       if (focused.isOnline === false || timeSincePing > 8000) {
         atualizarEstadoPresenca('offline');
