@@ -106,55 +106,88 @@ export function startReaderTracking(sessionId) {
   const clientId = getOrCreateClientId(sessionId);
   const deviceLabel = getDeviceLabel();
 
-  // Registra o momento exato em que o leitor abriu a carta (persiste no localStorage)
-  let readingStartedAt;
-  try {
-    const startKey = 'ct_reading_started_' + sessionId;
-    readingStartedAt = parseInt(localStorage.getItem(startKey) || '0', 10);
-    if (!readingStartedAt) {
-      readingStartedAt = Date.now();
-      localStorage.setItem(startKey, String(readingStartedAt));
-    }
-  } catch (e) {
-    readingStartedAt = Date.now();
-  }
-
-  // Contador de segundos de leitura ATIVA (só conta quando a aba está visível, persiste no localStorage)
-  const secsKey = 'ct_active_secs_' + sessionId + '_' + clientId.slice(0, 14);
-  let activeReadingSeconds;
-  try {
-    activeReadingSeconds = parseInt(localStorage.getItem(secsKey) || '0', 10);
-  } catch (e) {
-    activeReadingSeconds = 0;
-  }
-
-  // Tempo por trecho: { "1": { seconds: 45, snippet: "..." }, ... }
+  const SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutos de ausência = nova sessão
+  const startKey    = 'ct_reading_started_' + sessionId;
+  const secsKey     = 'ct_active_secs_'    + sessionId + '_' + clientId.slice(0, 14);
   const sectionTimesKey = 'ct_section_times_' + sessionId + '_' + clientId.slice(0, 14);
+  const sessionMetaKey  = 'ct_session_meta_'  + sessionId + '_' + clientId.slice(0, 14);
+  const pastSessionsKey = 'ct_past_sessions_' + sessionId + '_' + clientId.slice(0, 14);
+
+  // Leitura do estado persistido
+  let sessionMeta = {};
+  try { sessionMeta = JSON.parse(localStorage.getItem(sessionMetaKey) || '{}'); } catch(e) {}
+
+  let activeReadingSeconds;
+  try { activeReadingSeconds = parseInt(localStorage.getItem(secsKey) || '0', 10); } catch(e) { activeReadingSeconds = 0; }
+
   let sectionTimes = {};
-  try {
-    sectionTimes = JSON.parse(localStorage.getItem(sectionTimesKey) || '{}');
-  } catch (e) {
+  try { sectionTimes = JSON.parse(localStorage.getItem(sectionTimesKey) || '{}'); } catch(e) {}
+
+  let readingStartedAt;
+  try { readingStartedAt = parseInt(localStorage.getItem(startKey) || '0', 10); } catch(e) { readingStartedAt = 0; }
+
+  let sessionNumber = sessionMeta.sessionNumber || 1;
+  const lastDisconnectedAt = sessionMeta.lastDisconnectedAt || 0;
+
+  // Detecta nova sessão: ausentou-se por mais de SESSION_TIMEOUT_MS
+  const isNewSession = lastDisconnectedAt > 0 && (Date.now() - lastDisconnectedAt) > SESSION_TIMEOUT_MS;
+
+  if (isNewSession) {
+    // Arquiva a sessão anterior se tiver dados significativos
+    if (activeReadingSeconds > 5) {
+      let past = [];
+      try { past = JSON.parse(localStorage.getItem(pastSessionsKey) || '[]'); } catch(e) {}
+      past.push({
+        sessionNumber,
+        startedAt: readingStartedAt || lastDisconnectedAt,
+        endedAt: lastDisconnectedAt,
+        activeReadingSeconds,
+        sectionTimes: JSON.parse(JSON.stringify(sectionTimes))
+      });
+      if (past.length > 20) past = past.slice(-20);
+      try { localStorage.setItem(pastSessionsKey, JSON.stringify(past)); } catch(e) {}
+    }
+
+    // Reinicia contadores para nova sessão
+    sessionNumber++;
+    activeReadingSeconds = 0;
     sectionTimes = {};
+    readingStartedAt = Date.now();
+    try {
+      localStorage.setItem(secsKey, '0');
+      localStorage.setItem(sectionTimesKey, '{}');
+      localStorage.setItem(startKey, String(readingStartedAt));
+    } catch(e) {}
+  } else if (!readingStartedAt) {
+    readingStartedAt = Date.now();
+    try { localStorage.setItem(startKey, String(readingStartedAt)); } catch(e) {}
   }
 
+  // Persiste metadados da sessão atual
+  try {
+    localStorage.setItem(sessionMetaKey, JSON.stringify({ sessionNumber, lastDisconnectedAt: 0 }));
+  } catch(e) {}
+
+  // Contador de tempo ativo e por trecho
   setInterval(() => {
     if (!document.hidden) {
       activeReadingSeconds++;
       try { localStorage.setItem(secsKey, String(activeReadingSeconds)); } catch (e) {}
 
-      // Acumula tempo no trecho atual
       const section = getActiveSectionInfo();
       if (section) {
         const sk = String(section.index);
-        if (!sectionTimes[sk]) {
-          sectionTimes[sk] = { seconds: 0, snippet: section.textSnippet, tag: section.tag };
-        }
+        if (!sectionTimes[sk]) sectionTimes[sk] = { seconds: 0, snippet: section.textSnippet, tag: section.tag };
         sectionTimes[sk].seconds++;
         sectionTimes[sk].snippet = section.textSnippet;
         try { localStorage.setItem(sectionTimesKey, JSON.stringify(sectionTimes)); } catch (e) {}
       }
     }
   }, 1000);
+
+  function getPastSessions() {
+    try { return JSON.parse(localStorage.getItem(pastSessionsKey) || '[]'); } catch(e) { return []; }
+  }
 
   function coletarDados() {
     const maxY = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
@@ -183,6 +216,8 @@ export function startReaderTracking(sessionId) {
       readingStartedAt,
       activeReadingSeconds,
       sectionTimes,
+      sessionNumber,
+      pastSessions: getPastSessions(),
       meta: {
         timestamp: Date.now()
       }
@@ -273,6 +308,15 @@ export function startReaderTracking(sessionId) {
   // Desconexão total ao fechar aba
   window.addEventListener('beforeunload', () => {
     clearInterval(heartbeatTimer);
+
+    // Salva o momento da desconexão para detectar nova sessão no próximo acesso
+    try {
+      localStorage.setItem(sessionMetaKey, JSON.stringify({
+        sessionNumber,
+        lastDisconnectedAt: Date.now()
+      }));
+    } catch(e) {}
+
     enviarImediato(false, false);
 
     // Remove este cliente específico do Firebase ao fechar para não acumular
