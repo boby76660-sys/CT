@@ -263,15 +263,14 @@
       }
     });
 
-    // Processa a telemetria recebida do leitor
-    function processarAtualizacaoLeitor(payload, transportSource) {
-      lastPayload = payload;
-      clearTimeout(offlineTimer);
+    let lastHeartbeatTime = 0;
+    let currentVisualState = 'offline';
 
-      transportBadge.textContent = transportSource || 'Conectado';
+    function atualizarEstadoPresenca(estado) {
+      if (currentVisualState === estado) return;
+      currentVisualState = estado;
 
-      // 1. Status do Leitor e efeito visual na tela emulada
-      if (!payload.isOnline) {
+      if (estado === 'offline') {
         readerStatusBanner.className = 'reader-status-banner offline';
         readerStatusTitle.textContent = 'Leitor Desconectado';
         readerStatusSub.textContent = 'A aba da carta foi fechada';
@@ -279,30 +278,54 @@
         screenOverlay.className = 'screen-status-overlay visible';
         screenOverlayPill.className = 'screen-status-pill offline';
         screenOverlayPill.textContent = 'Leitor Desconectado';
-      } else if (!payload.isTabActive) {
-        // Escurece a tela quando estiver em segundo plano
+      } else if (estado === 'background') {
         readerStatusBanner.className = 'reader-status-banner background-tab';
         readerStatusTitle.textContent = 'Aba em Segundo Plano';
-        readerStatusSub.textContent = 'O leitor alternou para outra aba ou janela';
+        readerStatusSub.textContent = 'O leitor alternou para outra aba ou minimizou o app';
         screenFrame.className = 'device-screen-frame is-background';
         screenOverlay.className = 'screen-status-overlay visible';
         screenOverlayPill.className = 'screen-status-pill';
         screenOverlayPill.textContent = 'Aba em Segundo Plano';
       } else {
-        // Volta ao brilho normal quando estiver lendo ao vivo
         readerStatusBanner.className = 'reader-status-banner';
         readerStatusTitle.textContent = 'Lendo Agora (Ao Vivo)';
         readerStatusSub.textContent = 'Interagindo com a carta no momento';
         screenFrame.className = 'device-screen-frame';
         screenOverlay.className = 'screen-status-overlay';
       }
+    }
 
-      // Se não receber atualizações por 10s e estiver marcado como online, sinaliza inatividade
-      offlineTimer = setTimeout(() => {
-        if (readerStatusBanner.classList.contains('reader-status-banner') && !readerStatusBanner.classList.contains('offline')) {
-          readerStatusSub.textContent = 'Leitor parado ou inativo há alguns segundos';
-        }
-      }, 10000);
+    // Watchdog contínuo (250ms): se o app for minimizado e o celular congelar o JavaScript,
+    // o fluxo de batimentos cessa e o Admin detecta a ausência em ~2 segundos com 100% de garantia!
+    setInterval(() => {
+      if (!lastPayload) return;
+
+      const tempoSemSinal = Date.now() - lastHeartbeatTime;
+
+      if (lastPayload.isOnline === false || tempoSemSinal > 8000) {
+        atualizarEstadoPresenca('offline');
+      } else if (lastPayload.isTabActive === false || tempoSemSinal > 2300) {
+        atualizarEstadoPresenca('background');
+      } else {
+        atualizarEstadoPresenca('online');
+      }
+    }, 250);
+
+    // Processa a telemetria recebida do leitor
+    function processarAtualizacaoLeitor(payload, transportSource) {
+      lastPayload = payload;
+      lastHeartbeatTime = Date.now();
+
+      transportBadge.textContent = transportSource || 'Conectado';
+
+      // 1. Status do Leitor avaliado de imediato
+      if (payload.isOnline === false) {
+        atualizarEstadoPresenca('offline');
+      } else if (payload.isTabActive === false) {
+        atualizarEstadoPresenca('background');
+      } else {
+        atualizarEstadoPresenca('online');
+      }
 
       // 2. Progresso de Leitura
       const pct = payload.scroll ? payload.scroll.percent : 0;

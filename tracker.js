@@ -149,6 +149,14 @@ export function startReaderTracking(sessionId) {
   window.addEventListener('scroll', enviar, { passive: true });
   window.addEventListener('resize', enviar, { passive: true });
 
+  // Batimento cardíaco frequente (1s): garante que o Admin saiba que o leitor ainda está na página
+  // Quando o app é minimizado ou a tela é bloqueada no celular, o setInterval congela imediatamente
+  const heartbeatTimer = setInterval(() => {
+    if (!document.hidden) {
+      enviarImediato(true, true);
+    }
+  }, 1000);
+
   // Disparo imediato SEM THROTTLE ao minimizar, alternar aba ou trocar de app
   document.addEventListener('visibilitychange', () => {
     enviarImediato(true, !document.hidden);
@@ -168,8 +176,13 @@ export function startReaderTracking(sessionId) {
     enviarImediato(true, false);
   });
 
+  document.addEventListener('freeze', () => {
+    enviarImediato(true, false);
+  });
+
   // Desconexão total ao fechar aba
   window.addEventListener('beforeunload', () => {
+    clearInterval(heartbeatTimer);
     enviarImediato(false, false);
   });
 
