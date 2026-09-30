@@ -118,28 +118,63 @@ export function startReaderTracking(sessionId) {
     }
   }, 40);
 
-  // Escuta eventos do leitor silenciosamente
-  window.addEventListener('scroll', enviar, { passive: true });
-  window.addEventListener('resize', enviar, { passive: true });
-  document.addEventListener('visibilitychange', enviar);
-
-  // Desconexão ao fechar aba
-  window.addEventListener('beforeunload', () => {
+  // Função de envio instantâneo sem throttle (vital para quando o app é minimizado no celular)
+  function enviarImediato(customOnline, customTabActive) {
     const payload = coletarDados();
-    payload.isOnline = false;
-    payload.disconnectedAt = Date.now();
+    if (typeof customOnline === 'boolean') payload.isOnline = customOnline;
+    if (typeof customTabActive === 'boolean') payload.isTabActive = customTabActive;
+
+    // 1. Canal local
+    if (broadcastChannel) {
+      try { broadcastChannel.postMessage({ type: 'READER_UPDATE', payload }); } catch (e) {}
+    }
+    try {
+      localStorage.setItem('carta_last_payload_' + sessionId, JSON.stringify(payload));
+    } catch (e) {}
+
+    // 2. Firebase com prioridade do SO via keepalive
     if (dbUrl) {
       try {
-        navigator.sendBeacon(
-          `${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/reader.json`,
-          JSON.stringify(payload)
-        );
+        fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/reader.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          keepalive: true
+        }).catch(() => {});
       } catch (e) {}
     }
+  }
+
+  // Escuta o scroll contínuo com throttle de 40ms
+  window.addEventListener('scroll', enviar, { passive: true });
+  window.addEventListener('resize', enviar, { passive: true });
+
+  // Disparo imediato SEM THROTTLE ao minimizar, alternar aba ou trocar de app
+  document.addEventListener('visibilitychange', () => {
+    enviarImediato(true, !document.hidden);
+  });
+
+  window.addEventListener('blur', () => {
+    // No celular, ao arrastar para ir para a Home ou alternar apps, o 'blur' dispara antes
+    enviarImediato(true, false);
+  });
+
+  window.addEventListener('focus', () => {
+    // Ao voltar para o navegador, reativa o status ao vivo na mesma hora
+    enviarImediato(true, true);
+  });
+
+  window.addEventListener('pagehide', () => {
+    enviarImediato(true, false);
+  });
+
+  // Desconexão total ao fechar aba
+  window.addEventListener('beforeunload', () => {
+    enviarImediato(false, false);
   });
 
   // Envio inicial imediato
-  enviar();
+  enviarImediato(true, !document.hidden);
 }
 
 /**
