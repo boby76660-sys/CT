@@ -1,11 +1,8 @@
 import { firebaseConfig, isFirebaseConfigured } from './firebase-config.js';
 
-let firebaseApp = null;
-let firebaseDb = null;
-let realtimeRef = null;
 let broadcastChannel = null;
 
-// Inicializa canal local para testes imediatos sem Firebase configurado
+// Canal local para redundância em mesma máquina
 try {
   if (typeof BroadcastChannel !== 'undefined') {
     broadcastChannel = new BroadcastChannel('carta_telemetry_channel');
@@ -13,29 +10,9 @@ try {
 } catch (e) {}
 
 /**
- * Inicializa a conexão com o Firebase (ou ativa o modo fallback local)
+ * Throttle para manter 60fps fluido sem sobrecarregar a rede
  */
-export async function setupFirebase() {
-  const configured = isFirebaseConfigured();
-  if (configured) {
-    try {
-      const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js');
-      const { getDatabase, ref, set, onValue, onDisconnect, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js');
-      
-      firebaseApp = initializeApp(firebaseConfig);
-      firebaseDb = getDatabase(firebaseApp);
-      return { isFirebase: true, db: firebaseDb, ref, set, onValue, onDisconnect, serverTimestamp };
-    } catch (err) {
-      return { isFirebase: false, error: err };
-    }
-  }
-  return { isFirebase: false, error: 'Chaves do Firebase não configuradas. Usando simulação local.' };
-}
-
-/**
- * Utilitário de throttle para não inundar conexões no scroll rápido
- */
-export function throttle(func, limit = 100) {
+export function throttle(func, limit = 80) {
   let inThrottle = false;
   let lastArgs = null;
   return function (...args) {
@@ -56,7 +33,7 @@ export function throttle(func, limit = 100) {
 }
 
 /**
- * Determina o parágrafo ou cabeçalho mais próximo do centro da visão do leitor
+ * Identifica o trecho da carta em foco no centro da tela
  */
 export function getActiveSectionInfo() {
   const paragraphs = document.querySelectorAll('.letter-body p, .letter-body blockquote, .letter-section-title');
@@ -73,7 +50,7 @@ export function getActiveSectionInfo() {
       activeElement = {
         index: index + 1,
         total: paragraphs.length,
-        textSnippet: el.innerText.trim().slice(0, 70) + (el.innerText.length > 70 ? '...' : ''),
+        textSnippet: el.innerText.trim().slice(0, 75) + (el.innerText.length > 75 ? '...' : ''),
         tag: el.tagName.toLowerCase()
       };
     }
@@ -83,10 +60,11 @@ export function getActiveSectionInfo() {
 }
 
 /**
- * Inicia o rastreador na página do LEITOR
+ * Inicia o rastreamento SILENCIOSO na página do LEITOR
  */
-export async function startReaderTracking(sessionId, onLogMessage) {
-  const fb = await setupFirebase();
+export function startReaderTracking(sessionId) {
+  const isFb = isFirebaseConfigured();
+  const dbUrl = isFb ? firebaseConfig.databaseURL.replace(/\/$/, '') : null;
 
   function coletarDados() {
     const maxY = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
@@ -111,7 +89,6 @@ export async function startReaderTracking(sessionId, onLogMessage) {
       },
       activeSection: getActiveSectionInfo(),
       meta: {
-        userAgent: navigator.userAgent,
         timestamp: Date.now()
       }
     };
@@ -120,103 +97,106 @@ export async function startReaderTracking(sessionId, onLogMessage) {
   const enviar = throttle(async () => {
     const payload = coletarDados();
 
-    // 1. Envia via BroadcastChannel / localStorage para testes locais
+    // 1. Canal local
     if (broadcastChannel) {
-      try {
-        broadcastChannel.postMessage({ type: 'READER_UPDATE', payload });
-      } catch (e) {}
+      try { broadcastChannel.postMessage({ type: 'READER_UPDATE', payload }); } catch (e) {}
     }
     try {
       localStorage.setItem('carta_last_payload_' + sessionId, JSON.stringify(payload));
     } catch (e) {}
 
-    // 2. Envia via Firebase se configurado
-    if (fb.isFirebase && fb.db) {
+    // 2. Firebase Realtime Database
+    if (dbUrl) {
       try {
-        const { ref, set } = fb;
-        await set(ref(fb.db, `sessoes/${sessionId}/reader`), payload);
-      } catch (err) {}
+        fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/reader.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          keepalive: true
+        }).catch(() => {});
+      } catch (e) {}
     }
+  }, 90);
 
-    if (onLogMessage) {
-      onLogMessage(payload);
-    }
-  }, 100);
-
-  // Configura presença online/offline no Firebase
-  if (fb.isFirebase && fb.db) {
-    try {
-      const { ref, onDisconnect } = fb;
-      const statusRef = ref(fb.db, `sessoes/${sessionId}/reader/isOnline`);
-      const disconnectRef = ref(fb.db, `sessoes/${sessionId}/reader/disconnectedAt`);
-      onDisconnect(statusRef).set(false);
-      onDisconnect(disconnectRef).set(Date.now());
-    } catch (e) {}
-  }
-
-  // Escuta os eventos no leitor
+  // Escuta eventos do leitor silenciosamente
   window.addEventListener('scroll', enviar, { passive: true });
   window.addEventListener('resize', enviar, { passive: true });
   document.addEventListener('visibilitychange', enviar);
+
+  // Desconexão ao fechar aba
   window.addEventListener('beforeunload', () => {
     const payload = coletarDados();
     payload.isOnline = false;
     payload.disconnectedAt = Date.now();
-    if (broadcastChannel) {
-      try { broadcastChannel.postMessage({ type: 'READER_DISCONNECT', payload }); } catch (e) {}
+    if (dbUrl) {
+      try {
+        navigator.sendBeacon(
+          `${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/reader.json`,
+          JSON.stringify(payload)
+        );
+      } catch (e) {}
     }
   });
 
-  // Envio imediato da primeira leitura
+  // Envio inicial imediato
   enviar();
-
-  return { isFirebase: fb.isFirebase };
 }
 
 /**
- * Inicia o ouvinte no painel do ADMIN
+ * Inicia a escuta em tempo real no ADMIN
  */
-export async function startAdminListening(sessionId, onUpdate) {
-  const fb = await setupFirebase();
+export function startAdminListening(sessionId, onUpdate) {
+  const isFb = isFirebaseConfigured();
+  const dbUrl = isFb ? firebaseConfig.databaseURL.replace(/\/$/, '') : null;
 
-  // 1. Escuta via BroadcastChannel (local)
+  // 1. Escuta local via BroadcastChannel
   if (broadcastChannel) {
     broadcastChannel.addEventListener('message', (event) => {
       if (event.data && event.data.payload && event.data.payload.sessionId === sessionId) {
-        onUpdate(event.data.payload, 'Local (BroadcastChannel)');
+        onUpdate(event.data.payload, 'Local (Broadcast)');
       }
     });
   }
 
-  // Escuta via storage event (para abas diferentes no mesmo domínio)
-  window.addEventListener('storage', (e) => {
-    if (e.key === 'carta_last_payload_' + sessionId && e.newValue) {
-      try {
-        const data = JSON.parse(e.newValue);
-        onUpdate(data, 'Local (StorageEvent)');
-      } catch (err) {}
-    }
-  });
+  // 2. Escuta via EventSource (SSE) direto do Firebase Realtime Database
+  if (dbUrl) {
+    try {
+      const sseUrl = `${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/reader.json`;
+      const eventSource = new EventSource(sseUrl);
 
-  // Verifica se já havia algo gravado recentemente
+      eventSource.addEventListener('put', (event) => {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed && parsed.path === '/' && parsed.data) {
+            onUpdate(parsed.data, 'Firebase Realtime');
+          } else if (parsed && parsed.data && typeof parsed.data === 'object') {
+            onUpdate(parsed.data, 'Firebase Realtime');
+          }
+        } catch (e) {}
+      });
+
+      eventSource.addEventListener('patch', (event) => {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed && parsed.data) {
+            onUpdate(parsed.data, 'Firebase Realtime');
+          }
+        } catch (e) {}
+      });
+
+      eventSource.onerror = () => {
+        // EventSource nativo reconecta automaticamente
+      };
+    } catch (e) {
+      console.warn('Erro ao conectar EventSource Firebase:', e);
+    }
+  }
+
+  // 3. Fallback inicial de leitura em cache
   try {
     const saved = localStorage.getItem('carta_last_payload_' + sessionId);
     if (saved) {
-      onUpdate(JSON.parse(saved), 'Local (Cache)');
+      onUpdate(JSON.parse(saved), 'Cache');
     }
   } catch (e) {}
-
-  // 2. Escuta via Firebase Realtime Database
-  if (fb.isFirebase && fb.db) {
-    const { ref, onValue } = fb;
-    const sessionRef = ref(fb.db, `sessoes/${sessionId}/reader`);
-    onValue(sessionRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        onUpdate(data, 'Firebase Realtime');
-      }
-    });
-  }
-
-  return { isFirebase: fb.isFirebase };
 }
