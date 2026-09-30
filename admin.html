@@ -120,15 +120,6 @@
         </div>
       </div>
 
-      <!-- Informações do Firebase / Configuração -->
-      <div class="sidebar-card">
-        <div class="sidebar-card-title">Conexão & Hospedagem</div>
-        <div id="connectionHelpBox" class="firebase-notice-box">
-          <strong>⚡ Pronto para Vercel:</strong> O projeto pode ser implantado diretamente.<br><br>
-          Para sincronizar em dispositivos diferentes na internet, preencha as credenciais em <code>firebase-config.js</code>. Enquanto não preencher, o teste funciona localmente entre abas!
-        </div>
-      </div>
-
     </aside>
 
   </main>
@@ -172,8 +163,37 @@
     let appliedWidth = 0;
     let appliedHeight = 0;
 
+    let targetScrollY = 0;
+    let currentScrollY = 0;
+    let isFirstSync = true;
+
+    // Loop contínuo a 60fps/120fps com interpolação física suave (LERP)
+    // Transforma atualizações de rede discretas em movimento fluido idêntico ao do celular
+    function animarScrollEspelho() {
+      if (mirrorIframe && mirrorIframe.contentWindow) {
+        const diff = targetScrollY - currentScrollY;
+
+        if (Math.abs(diff) > 0.1) {
+          // Fator de suavização (LERP) rápido e sem atraso percebido
+          currentScrollY += diff * 0.28;
+          try {
+            mirrorIframe.contentWindow.scrollTo(0, currentScrollY);
+          } catch (e) {}
+        } else if (currentScrollY !== targetScrollY) {
+          currentScrollY = targetScrollY;
+          try {
+            mirrorIframe.contentWindow.scrollTo(0, currentScrollY);
+          } catch (e) {}
+        }
+      }
+      requestAnimationFrame(animarScrollEspelho);
+    }
+
+    requestAnimationFrame(animarScrollEspelho);
+
     // Atualiza o iframe para a sessão atual
     function recarregarIframe() {
+      isFirstSync = true;
       mirrorIframe.src = `index.html?session=${encodeURIComponent(currentSessionId)}&mirror=1`;
     }
 
@@ -304,19 +324,22 @@
         }
       }
 
-      // 4. Métricas de Scroll
+      // 4. Métricas e Sincronização Suave de Scroll
       if (payload.scroll) {
-        infoScrollY.textContent = `${payload.scroll.y} px`;
-        infoMaxScroll.textContent = `${payload.scroll.maxY} px`;
+        infoScrollY.textContent = `${Math.round(payload.scroll.y)} px`;
+        infoMaxScroll.textContent = `${Math.round(payload.scroll.maxY)} px`;
 
-        // 5. Rola o espelho instantaneamente em 60fps (sempre ativo)
-        if (mirrorIframe.contentWindow) {
-          try {
-            mirrorIframe.contentWindow.scrollTo({
-              top: payload.scroll.y,
-              behavior: 'auto'
-            });
-          } catch (e) {}
+        if (isFirstSync) {
+          currentScrollY = payload.scroll.y;
+          targetScrollY = payload.scroll.y;
+          isFirstSync = false;
+          if (mirrorIframe.contentWindow) {
+            try {
+              mirrorIframe.contentWindow.scrollTo(0, currentScrollY);
+            } catch (e) {}
+          }
+        } else {
+          targetScrollY = payload.scroll.y;
         }
       }
 

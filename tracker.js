@@ -116,7 +116,7 @@ export function startReaderTracking(sessionId) {
         }).catch(() => {});
       } catch (e) {}
     }
-  }, 90);
+  }, 40);
 
   // Escuta eventos do leitor silenciosamente
   window.addEventListener('scroll', enviar, { passive: true });
