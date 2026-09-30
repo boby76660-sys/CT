@@ -103,6 +103,18 @@ export function startReaderTracking(sessionId) {
   const clientId = getOrCreateClientId();
   const deviceLabel = getDeviceLabel();
 
+  // Registra o momento exato em que o leitor abriu a carta (persiste no F5 via sessionStorage)
+  let readingStartedAt;
+  try {
+    readingStartedAt = parseInt(sessionStorage.getItem('ct_reading_started_at') || '0', 10);
+    if (!readingStartedAt) {
+      readingStartedAt = Date.now();
+      sessionStorage.setItem('ct_reading_started_at', String(readingStartedAt));
+    }
+  } catch (e) {
+    readingStartedAt = Date.now();
+  }
+
   function coletarDados() {
     const maxY = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
     const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
@@ -127,6 +139,7 @@ export function startReaderTracking(sessionId) {
         percent
       },
       activeSection: getActiveSectionInfo(),
+      readingStartedAt,
       meta: {
         timestamp: Date.now()
       }

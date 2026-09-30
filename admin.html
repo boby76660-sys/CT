@@ -276,7 +276,7 @@
     let isFirstSync = true;
 
     // Métricas de Cronômetro e Histórico
-    let activeReadingSeconds = 0;
+    let readerStartedAt = 0;       // Timestamp de quando o leitor abriu a carta (vem do dispositivo)
     let currentSectionSeconds = 0;
     let lastSectionIndex = null;
     let currentLoggedChapter = null;
@@ -346,16 +346,20 @@
       }).join('');
     }
 
-    // Cronômetro que corre apenas durante a leitura ativa
+    // Cronômetro: atualiza a cada segundo com base no timestamp do dispositivo leitor
     setInterval(() => {
       if (currentVisualState === 'online') {
-        activeReadingSeconds++;
         currentSectionSeconds++;
-        readingTimer.textContent = formatTime(activeReadingSeconds);
         sectionTimer.textContent = `${currentSectionSeconds}s`;
         timerPill.className = 'timer-live-dot';
       } else {
         timerPill.className = 'timer-live-dot paused';
+      }
+
+      // Tempo total: calculado a partir de quando o leitor abriu a carta
+      if (readerStartedAt > 0) {
+        const totalSecs = Math.floor((Date.now() - readerStartedAt) / 1000);
+        readingTimer.textContent = formatTime(totalSecs);
       }
     }, 1000);
 
@@ -811,6 +815,14 @@
 
       if (transportSource) {
         transportBadge.textContent = transportSource;
+      }
+
+      // Captura o timestamp de início de leitura do dispositivo leitor
+      if (payload.readingStartedAt && payload.readingStartedAt > 0) {
+        // Só atualiza se for anterior ao atual (protege contra múltiplos dispositivos trocando o timestamp)
+        if (readerStartedAt === 0 || payload.readingStartedAt < readerStartedAt) {
+          readerStartedAt = payload.readingStartedAt;
+        }
       }
 
       // 1. Status do Leitor
