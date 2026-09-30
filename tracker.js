@@ -155,14 +155,6 @@ export function startReaderTracking(sessionId) {
           body: JSON.stringify(payload),
           keepalive: true
         }).catch(() => {});
-
-        // Mantém reader.json sincronizado para redundância total
-        fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/reader.json`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-          keepalive: true
-        }).catch(() => {});
       } catch (e) {}
     }
   }, 40);
@@ -187,13 +179,6 @@ export function startReaderTracking(sessionId) {
     if (dbUrl) {
       try {
         fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/clients/${clientId}.json`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-          keepalive: true
-        }).catch(() => {});
-
-        fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/reader.json`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),

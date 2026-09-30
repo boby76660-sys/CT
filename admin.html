@@ -843,7 +843,8 @@
         infoRatio.textContent = (width / height).toFixed(2) + ' : 1';
         infoDeviceGuess.textContent = payload.deviceLabel || estimarDispositivo(width, height);
 
-        if (width !== appliedWidth || Math.abs(height - appliedHeight) > 60) {
+        // Só recalcula a escala quando a LARGURA mudar (altura varia muito por barra de URL móvel)
+        if (width !== appliedWidth) {
           appliedWidth = width;
           appliedHeight = height;
           recalcularEscalaMockup(width, height);
@@ -865,7 +866,10 @@
             } catch (e) {}
           }
         } else {
-          targetScrollY = payload.scroll.y;
+          // Filtra microjitter de pacotes duplicados: só atualiza se houver diferença real (>= 15px)
+          if (Math.abs(payload.scroll.y - targetScrollY) >= 15) {
+            targetScrollY = payload.scroll.y;
+          }
         }
 
         // Atualiza Minimapa Panorâmico
