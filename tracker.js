@@ -207,12 +207,10 @@ export function startReaderTracking(sessionId) {
   window.addEventListener('scroll', enviar, { passive: true });
   window.addEventListener('resize', enviar, { passive: true });
 
-  // Batimento cardíaco frequente (1s) para confirmar presença ativa
+  // Batimento cardíaco frequente para confirmar presença ativa (envia mesmo em background para não ser considerado morto)
   const heartbeatTimer = setInterval(() => {
-    if (!document.hidden) {
-      enviarImediato(true, true);
-    }
-  }, 1000);
+    enviarImediato(true, !document.hidden);
+  }, 2000);
 
   // Disparo imediato SEM THROTTLE ao minimizar, alternar aba ou trocar de app
   document.addEventListener('visibilitychange', () => {

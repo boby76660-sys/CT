@@ -212,7 +212,7 @@
   <!-- Script do Painel Admin -->
   <script type="module">
     import { startAdminListening } from './tracker.js';
-    import { isFirebaseConfigured } from './firebase-config.js';
+    import { firebaseConfig, isFirebaseConfigured } from './firebase-config.js';
 
     // Elementos da interface
     const sessionIdInput = document.getElementById('sessionIdInput');
@@ -554,7 +554,9 @@
         const c = clients[id];
         if (!c) continue;
         const timeSinceSignal = now - (c.lastReceivedAt || 0);
-        const isDead = c.isOnline === false || timeSinceSignal > 7000;
+        // Se a aba está em background, navegadores pausam o setInterval, então aumentamos a tolerância para 120 segundos
+        const timeoutLimit = (c.isTabActive === false) ? 120000 : 12000;
+        const isDead = c.isOnline === false || timeSinceSignal > timeoutLimit;
         if (isDead) {
           mortos.push({ id, client: c, lastAt: c.lastReceivedAt || 0 });
         } else {
@@ -604,8 +606,9 @@
       for (const [id, c] of Object.entries(clients)) {
         if (!c) continue;
         const timeSinceSignal = now - (c.lastReceivedAt || 0);
-        // Ativo se recebemos sinal nos últimos 7 segundos e não está explicitamente desconectado
-        if (c.isOnline !== false && timeSinceSignal <= 7000) {
+        // Ativo se não está explícito como desconectado e o tempo não excedeu o limite
+        const timeoutLimit = (c.isTabActive === false) ? 120000 : 12000;
+        if (c.isOnline !== false && timeSinceSignal <= timeoutLimit) {
           list.push(c);
         }
       }
@@ -788,7 +791,8 @@
       // Alguma aba está ativamente no primeiro plano com sinal recente?
       const anyForeground = activeList.some(c => c.isTabActive === true && (now - (c.lastReceivedAt || 0)) < 2300);
 
-      if (focused.isOnline === false || timeSincePing > 7000) {
+      const timeoutLimit = (focused.isTabActive === false) ? 120000 : 12000;
+      if (focused.isOnline === false || timeSincePing > timeoutLimit) {
         atualizarEstadoPresenca('offline');
       } else if (!anyForeground) {
         atualizarEstadoPresenca('background');
