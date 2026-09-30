@@ -277,6 +277,8 @@
 
     // Métricas de Cronômetro e Histórico
     let readerStartedAt = 0;       // Timestamp de quando o leitor abriu a carta (vem do dispositivo)
+    let lastKnownActiveSeconds = 0; // Último valor de activeReadingSeconds recebido do leitor
+    let lastKnownActiveAt = 0;      // Quando recebemos esse valor
     let currentSectionSeconds = 0;
     let lastSectionIndex = null;
     let currentLoggedChapter = null;
@@ -356,10 +358,20 @@
         timerPill.className = 'timer-live-dot paused';
       }
 
-      // Tempo total: calculado a partir de quando o leitor abriu a carta
-      if (readerStartedAt > 0) {
-        const totalSecs = Math.floor((Date.now() - readerStartedAt) / 1000);
-        readingTimer.textContent = formatTime(totalSecs);
+      // Tempo total: usa activeReadingSeconds do leitor (só conta quando aba visível no celular)
+      // Interpola localmente para o display ser suave entre heartbeats
+      if (lastKnownActiveSeconds > 0) {
+        const secondsSinceUpdate = lastKnownActiveAt > 0
+          ? Math.floor((Date.now() - lastKnownActiveAt) / 1000)
+          : 0;
+        // Só interpola se o leitor estiver ativo (não conta quando minimizado)
+        const interpolated = currentVisualState === 'online'
+          ? lastKnownActiveSeconds + secondsSinceUpdate
+          : lastKnownActiveSeconds;
+        readingTimer.textContent = formatTime(interpolated);
+      } else if (readerStartedAt > 0 && currentVisualState === 'online') {
+        // Fallback para versao antiga do tracker sem activeReadingSeconds
+        readingTimer.textContent = formatTime(Math.floor((Date.now() - readerStartedAt) / 1000));
       }
     }, 1000);
 
@@ -822,13 +834,17 @@
       // do primeiro pacote recebido como aproximação do início da sessão.
       const startTs = payload.readingStartedAt || 0;
       if (startTs > 0) {
-        // Versão nova: usa o timestamp real de quando o leitor abriu a carta
         if (readerStartedAt === 0 || startTs < readerStartedAt) {
           readerStartedAt = startTs;
         }
       } else if (readerStartedAt === 0 && payload.meta && payload.meta.timestamp > 0) {
-        // Fallback: usa o timestamp do primeiro pacote recebido (aproximado)
         readerStartedAt = payload.meta.timestamp;
+      }
+
+      // Atualiza o contador de tempo ativo vindo do dispositivo leitor
+      if (payload.activeReadingSeconds > 0 && payload.activeReadingSeconds > lastKnownActiveSeconds) {
+        lastKnownActiveSeconds = payload.activeReadingSeconds;
+        lastKnownActiveAt = Date.now();
       }
 
       // 1. Status do Leitor

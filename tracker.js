@@ -115,6 +115,23 @@ export function startReaderTracking(sessionId) {
     readingStartedAt = Date.now();
   }
 
+  // Contador de segundos de leitura ATIVA (só conta quando a aba está visível)
+  let activeReadingSeconds;
+  try {
+    activeReadingSeconds = parseInt(sessionStorage.getItem('ct_active_reading_seconds') || '0', 10);
+  } catch (e) {
+    activeReadingSeconds = 0;
+  }
+
+  setInterval(() => {
+    if (!document.hidden) {
+      activeReadingSeconds++;
+      try {
+        sessionStorage.setItem('ct_active_reading_seconds', String(activeReadingSeconds));
+      } catch (e) {}
+    }
+  }, 1000);
+
   function coletarDados() {
     const maxY = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
     const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
@@ -140,6 +157,7 @@ export function startReaderTracking(sessionId) {
       },
       activeSection: getActiveSectionInfo(),
       readingStartedAt,
+      activeReadingSeconds,
       meta: {
         timestamp: Date.now()
       }
