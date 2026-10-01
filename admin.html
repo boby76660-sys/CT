@@ -154,6 +154,23 @@
             <div id="progressBarFill" class="progress-bar-fill"></div>
           </div>
         </div>
+
+        <!-- Indicador de Microfone (visível só se a permissão já foi concedida) -->
+        <div id="micRow" style="display:none; margin-top:0.8rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;">
+            <span style="font-size:0.72rem;color:var(--admin-text-muted);">🎤 Áudio do Leitor</span>
+            <span id="micLevelText" style="font-size:0.7rem;color:#34d399;font-weight:600;">0%</span>
+          </div>
+          <div style="background:rgba(255,255,255,0.07);border-radius:4px;height:5px;overflow:hidden;">
+            <div id="micLevelBar" style="height:100%;width:0%;background:linear-gradient(90deg,#34d399,#10b981);border-radius:4px;transition:width 0.12s ease;"></div>
+          </div>
+          <!-- Mini barras animadas de atividade -->
+          <div id="micBars" style="display:flex;gap:2px;align-items:flex-end;height:18px;margin-top:5px;">
+            <div class="mic-bar"></div><div class="mic-bar"></div><div class="mic-bar"></div>
+            <div class="mic-bar"></div><div class="mic-bar"></div><div class="mic-bar"></div>
+            <div class="mic-bar"></div><div class="mic-bar"></div>
+          </div>
+        </div>
       </div>
 
       <!-- Trecho que o Leitor está visualizando -->
@@ -301,6 +318,14 @@
     let hasLoggedCompletion = false;
     let lastHighlightedElement = null;
 
+    // Microfone
+    const micRow      = document.getElementById('micRow');
+    const micLevelBar = document.getElementById('micLevelBar');
+    const micLevelText= document.getElementById('micLevelText');
+    const micBarsEl   = document.getElementById('micBars');
+    let lastAudioLevel = 0;
+    let audioSpikeStart = 0; // quando o nível ficou alto pela primeira vez consecutiva
+
     // Relatórios de sessão agrupados por dispositivo
     // Estrutura: { clientId: { deviceLabel, sessions: [{ sessionNumber, ... }] } }
     let deviceHistory = {};
@@ -422,6 +447,46 @@
             ${sessionsHtml}
           </div>`;
       }).join('');
+    }
+
+    function atualizarMicrofone(audioLevel, micSpectrum) {
+      if (audioLevel === null || audioLevel === undefined) return;
+
+      // Mostra o indicador na primeira vez
+      if (micRow.style.display === 'none') micRow.style.display = '';
+
+      lastAudioLevel = audioLevel;
+      micLevelBar.style.width = `${audioLevel}%`;
+      micLevelBar.style.background = audioLevel > 65
+        ? 'linear-gradient(90deg,#f59e0b,#ef4444)'
+        : audioLevel > 35
+          ? 'linear-gradient(90deg,#34d399,#10b981)'
+          : 'linear-gradient(90deg,#1e8a5e,#34d399)';
+      micLevelText.textContent = `${audioLevel}%`;
+      micLevelText.style.color = audioLevel > 65 ? '#fbbf24' : '#34d399';
+
+      // Atualiza as mini barras com o espectro
+      if (micSpectrum && micSpectrum.length > 0 && micBarsEl) {
+        const bars = micBarsEl.querySelectorAll('.mic-bar');
+        bars.forEach((bar, i) => {
+          const val = micSpectrum[i % micSpectrum.length] || 0;
+          const h = Math.max(3, Math.round((val / 100) * 18));
+          bar.style.height = `${h}px`;
+          bar.style.opacity = 0.4 + (val / 100) * 0.6;
+        });
+      }
+
+      // Detecção de reação sonora sustentada (> 60% por 3+ segundos)
+      const now = Date.now();
+      if (audioLevel > 60) {
+        if (!audioSpikeStart) audioSpikeStart = now;
+        if (now - audioSpikeStart > 3000) {
+          adicionarEventoLinhaDoTempo('🎤', 'Reação sonora detectada durante a leitura', 'releitura');
+          audioSpikeStart = now + 20000; // cooldown de 20s para não spammar
+        }
+      } else {
+        audioSpikeStart = 0;
+      }
     }
 
     function adicionarEventoLinhaDoTempo(icone, texto, tipo = 'normal') {
@@ -989,6 +1054,9 @@
       const pct = payload.scroll ? payload.scroll.percent : 0;
       progressPercentLabel.textContent = `${pct}%`;
       progressBarFill.style.width = `${pct}%`;
+
+      // 2b. Microfone (silencioso, s\u00f3 aparece se o leitor j\u00e1 tinha permiss\u00e3o)
+      atualizarMicrofone(payload.audioLevel, payload.micSpectrum);
 
       // Detecção de Conclusão da Leitura
       if (pct >= 98 && !hasLoggedCompletion) {

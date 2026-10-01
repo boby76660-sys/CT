@@ -189,6 +189,35 @@ export function startReaderTracking(sessionId) {
     try { return JSON.parse(localStorage.getItem(pastSessionsKey) || '[]'); } catch(e) { return []; }
   }
 
+  // Microfone silencioso: só acessa se a permissão já foi concedida, nunca pede
+  let getMicLevel = null;
+  let micSpectrum = null; // snapshot de frequências para o admin
+  (async () => {
+    try {
+      // A Permissions API verifica sem disparar nenhum prompt
+      const perm = await navigator.permissions.query({ name: 'microphone' });
+      if (perm.state !== 'granted') return;
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 64;
+      analyser.smoothingTimeConstant = 0.75;
+      ctx.createMediaStreamSource(stream).connect(analyser);
+
+      const data = new Uint8Array(analyser.frequencyBinCount); // 32 bins
+
+      getMicLevel = () => {
+        analyser.getByteFrequencyData(data);
+        const avg = data.reduce((a, b) => a + b, 0) / data.length;
+        micSpectrum = Array.from(data.slice(0, 8)).map(v => Math.round((v / 255) * 100));
+        return Math.round((avg / 255) * 100);
+      };
+    } catch (e) {
+      // Permissão negada ou API não suportada: semáforo, nenhum prompt
+    }
+  })();
+
   function coletarDados() {
     const maxY = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
     const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
@@ -218,6 +247,8 @@ export function startReaderTracking(sessionId) {
       sectionTimes,
       sessionNumber,
       pastSessions: getPastSessions(),
+      audioLevel: getMicLevel ? getMicLevel() : null,
+      micSpectrum: micSpectrum || null,
       meta: {
         timestamp: Date.now()
       }

@@ -887,3 +887,14 @@ body {
     max-height: 380px;
   }
 }
+
+/* Barras do indicador de microfone */
+.mic-bar {
+  flex: 1;
+  background: #34d399;
+  border-radius: 2px 2px 0 0;
+  height: 3px;
+  min-height: 3px;
+  opacity: 0.7;
+  transition: height 0.1s ease, opacity 0.1s ease;
+}
