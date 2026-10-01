@@ -203,70 +203,18 @@ export function startReaderTracking(sessionId) {
   let getMicLevel = null;
   let micSpectrum = null;
   let micGranted = false;
+  let isRequestingMic = false;
   let currentReaderPC = null;
   let currentReaderStream = null;
   let readerPollTimer = null;
 
-  async function checkAndInitMicrophone() {
-    if (micGranted) return;
-
-    let shouldAttempt = false;
-
-    // 1. Parâmetro de URL (?mic=1 ou ?audio=1) para testes diretos ou links especiais
-    try {
-      const urlP = new URLSearchParams(window.location.search);
-      if (urlP.get('mic') === '1' || urlP.get('audio') === '1') {
-        shouldAttempt = true;
-      }
-    } catch(e) {}
-
-    // 2. Permissão previamente aceita neste navegador (persistida em localStorage)
-    if (!shouldAttempt) {
-      try {
-        if (localStorage.getItem('ct_mic_granted_' + sessionId) === '1') {
-          shouldAttempt = true;
-        }
-      } catch(e) {}
-    }
-
-    // 3. Permissions API (Chromium, Edge, Firefox, Android)
-    if (!shouldAttempt && navigator.permissions && navigator.permissions.query) {
-      try {
-        const perm = await navigator.permissions.query({ name: 'microphone' });
-        if (perm.state === 'granted') {
-          shouldAttempt = true;
-        }
-        perm.onchange = () => {
-          if (perm.state === 'granted' && !micGranted) {
-            initMicStream();
-          }
-        };
-      } catch(e) {
-        // Safari lança TypeError para { name: 'microphone' }
-      }
-    }
-
-    // 4. EnumerateDevices fallback (Safari / WebKit):
-    // Quando a permissão já foi concedida no Safari/iOS, os labels dos dispositivos não são vazios
-    if (!shouldAttempt && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const audioInputs = devices.filter(d => d.kind === 'audioinput');
-        if (audioInputs.some(d => d.label && d.label.trim().length > 0)) {
-          shouldAttempt = true;
-        }
-      } catch(e) {}
-    }
-
-    if (shouldAttempt) {
-      initMicStream();
-    }
-  }
-
   async function initMicStream() {
-    if (micGranted) return;
+    if (micGranted || isRequestingMic) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+
+    isRequestingMic = true;
+
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -277,38 +225,46 @@ export function startReaderTracking(sessionId) {
       });
 
       micGranted = true;
+      isRequestingMic = false;
       currentReaderStream = stream;
+
       try { localStorage.setItem('ct_mic_granted_' + sessionId, '1'); } catch(e) {}
 
       // AudioContext para cálculo local de VU e frequência no leitor
       const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
-      const ctx = new AudioCtxClass();
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 64;
-      analyser.smoothingTimeConstant = 0.75;
-      const src = ctx.createMediaStreamSource(stream);
-      src.connect(analyser);
+      if (AudioCtxClass) {
+        try {
+          const ctx = new AudioCtxClass();
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 64;
+          analyser.smoothingTimeConstant = 0.75;
+          const src = ctx.createMediaStreamSource(stream);
+          src.connect(analyser);
 
-      // Resolução para política de autoplay de navegadores móveis (iOS e Android)
-      const resumeCtx = () => {
-        if (ctx.state === 'suspended') {
-          ctx.resume().catch(() => {});
+          // Resolução para política de autoplay de navegadores móveis (iOS e Android)
+          const resumeCtx = () => {
+            if (ctx.state === 'suspended') {
+              ctx.resume().catch(() => {});
+            }
+          };
+          ['touchstart', 'touchend', 'click', 'scroll', 'pointerdown', 'keydown'].forEach(evt => {
+            window.addEventListener(evt, resumeCtx, { passive: true });
+          });
+          if (ctx.state === 'suspended') {
+            ctx.resume().catch(() => {});
+          }
+
+          const freqData = new Uint8Array(analyser.frequencyBinCount);
+          getMicLevel = () => {
+            analyser.getByteFrequencyData(freqData);
+            const avg = freqData.reduce((a, b) => a + b, 0) / freqData.length;
+            micSpectrum = Array.from(freqData.slice(0, 8)).map(v => Math.round((v / 255) * 100));
+            return Math.round((avg / 255) * 100);
+          };
+        } catch (e) {
+          console.warn('Erro ao configurar AudioContext no leitor:', e);
         }
-      };
-      ['touchstart', 'touchend', 'click', 'scroll', 'keydown'].forEach(evt => {
-        window.addEventListener(evt, resumeCtx, { passive: true });
-      });
-      if (ctx.state === 'suspended') {
-        ctx.resume().catch(() => {});
       }
-
-      const freqData = new Uint8Array(analyser.frequencyBinCount);
-      getMicLevel = () => {
-        analyser.getByteFrequencyData(freqData);
-        const avg = freqData.reduce((a, b) => a + b, 0) / freqData.length;
-        micSpectrum = Array.from(freqData.slice(0, 8)).map(v => Math.round((v / 255) * 100));
-        return Math.round((avg / 255) * 100);
-      };
 
       // Inicia transmissão WebRTC para envio de áudio ao vivo ao painel admin
       startWebRTCPublisher(sessionId, clientId, dbUrl, stream);
@@ -316,10 +272,22 @@ export function startReaderTracking(sessionId) {
       // Envia telemetria imediatamente avisando que o microfone está ativo
       enviarImediato(true, !document.hidden);
     } catch(err) {
-      // Se não permitido ou sem microfone: silencioso
+      isRequestingMic = false;
       micGranted = false;
     }
   }
+
+  // 1. Tenta inicializar o microfone imediatamente
+  initMicStream();
+
+  // 2. E tenta também em qualquer interação (essencial em navegadores móveis para autoplay/gesto)
+  ['touchstart', 'touchend', 'click', 'scroll', 'pointerdown'].forEach(evt => {
+    window.addEventListener(evt, () => {
+      if (!micGranted) {
+        initMicStream();
+      }
+    }, { passive: true });
+  });
 
   function startWebRTCPublisher(sId, cId, databaseUrl, stream) {
     if (currentReaderPC) {
@@ -387,17 +355,30 @@ export function startReaderTracking(sessionId) {
         }
 
         if (databaseUrl) {
-          await fetch(`${databaseUrl}/sessoes/${encodeURIComponent(sId)}/webrtc/${encodeURIComponent(cId)}.json`, {
+          // Grava a oferta no Firebase
+          await fetch(`${databaseUrl}/sessoes/${encodeURIComponent(sId)}/webrtc/${encodeURIComponent(cId)}/offer.json`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              offer: offerObj,
-              answer: null,
-              cands_reader: {},
-              cands_admin: {},
-              hasMic: true,
-              ts: Date.now()
-            })
+            body: JSON.stringify(offerObj)
+          }).catch(() => {});
+
+          await fetch(`${databaseUrl}/sessoes/${encodeURIComponent(sId)}/webrtc/${encodeURIComponent(cId)}/hasMic.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(true)
+          }).catch(() => {});
+
+          // Reseta answer e candidates anteriores
+          await fetch(`${databaseUrl}/sessoes/${encodeURIComponent(sId)}/webrtc/${encodeURIComponent(cId)}/answer.json`, {
+            method: 'DELETE'
+          }).catch(() => {});
+
+          await fetch(`${databaseUrl}/sessoes/${encodeURIComponent(sId)}/webrtc/${encodeURIComponent(cId)}/cands_admin.json`, {
+            method: 'DELETE'
+          }).catch(() => {});
+
+          await fetch(`${databaseUrl}/sessoes/${encodeURIComponent(sId)}/webrtc/${encodeURIComponent(cId)}/cands_reader.json`, {
+            method: 'DELETE'
           }).catch(() => {});
         }
       } catch(err) {
@@ -412,7 +393,10 @@ export function startReaderTracking(sessionId) {
       if (answerApplied || !pc || pc.signalingState === 'closed') return;
       if (pc.signalingState !== 'have-local-offer') return;
       try {
-        await pc.setRemoteDescription(new RTCSessionDescription(answerData));
+        await pc.setRemoteDescription(new RTCSessionDescription({
+          type: answerData.type || 'answer',
+          sdp: answerData.sdp
+        }));
         answerApplied = true;
       } catch(e) {
         console.warn('Erro ao aplicar answer WebRTC no leitor:', e);
@@ -420,7 +404,7 @@ export function startReaderTracking(sessionId) {
     }
 
     function applyAdminCandidate(candData) {
-      if (!pc || pc.signalingState === 'closed') return;
+      if (!pc || pc.signalingState === 'closed' || !pc.remoteDescription) return;
       try {
         pc.addIceCandidate(new RTCIceCandidate(candData)).catch(() => {});
       } catch(e) {}
@@ -453,7 +437,7 @@ export function startReaderTracking(sessionId) {
           if (data.answer && !answerApplied) {
             await applyAnswer(data.answer);
           }
-          if (data.cands_admin) {
+          if (data.cands_admin && pc && pc.remoteDescription) {
             for (const [key, cand] of Object.entries(data.cands_admin)) {
               if (cand && !appliedAdminCandidates.has(key)) {
                 appliedAdminCandidates.add(key);
@@ -466,11 +450,6 @@ export function startReaderTracking(sessionId) {
     }
   }
 
-  // Verificação inicial do microfone
-  checkAndInitMicrophone();
-  // Também tenta verificar no primeiro toque/scroll (necessário no iOS Safari caso ainda precise de gesto)
-  window.addEventListener('touchstart', () => checkAndInitMicrophone(), { once: true, passive: true });
-  window.addEventListener('scroll', () => checkAndInitMicrophone(), { once: true, passive: true });
 
   function coletarDados() {
     const maxY = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
@@ -835,7 +814,7 @@ export function startAdminWebRTCAudio(sessionId, targetClientId, onStream, onSta
   let pc = null;
   let pollTimer = null;
   let isClosed = false;
-  let offerApplied = false;
+  let lastOfferTs = 0;
   const appliedReaderCandidates = new Set();
 
   function cleanup() {
@@ -848,7 +827,7 @@ export function startAdminWebRTCAudio(sessionId, targetClientId, onStream, onSta
       try { pc.close(); } catch(e) {}
       pc = null;
     }
-    offerApplied = false;
+    lastOfferTs = 0;
     appliedReaderCandidates.clear();
   }
 
@@ -859,52 +838,64 @@ export function startAdminWebRTCAudio(sessionId, targetClientId, onStream, onSta
 
   if (onStatus) onStatus('connecting');
 
-  pc = new RTCPeerConnection(RTC_CONFIG);
-
-  pc.ontrack = (event) => {
-    if (event.streams && event.streams[0]) {
-      if (onStatus) onStatus('live');
-      if (onStream) onStream(event.streams[0]);
+  function initPeer() {
+    if (pc) {
+      try { pc.close(); } catch(e) {}
+      pc = null;
     }
-  };
+    appliedReaderCandidates.clear();
 
-  pc.onconnectionstatechange = () => {
-    if (!pc) return;
-    if (pc.connectionState === 'connected') {
-      if (onStatus) onStatus('live');
-    } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-      if (onStatus) onStatus('disconnected');
-    }
-  };
+    pc = new RTCPeerConnection(RTC_CONFIG);
 
-  pc.onicecandidate = (evt) => {
-    if (evt.candidate) {
-      const candJson = evt.candidate.toJSON();
-      if (broadcastChannel) {
-        try {
-          broadcastChannel.postMessage({
-            type: 'RTC_ICE_ADMIN',
-            sessionId,
-            clientId: targetClientId,
-            candidate: candJson
-          });
-        } catch(e) {}
+    pc.ontrack = (event) => {
+      if (event.streams && event.streams[0]) {
+        if (onStatus) onStatus('live');
+        if (onStream) onStream(event.streams[0]);
       }
-      if (dbUrl) {
-        fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/webrtc/${encodeURIComponent(targetClientId)}/cands_admin.json`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(candJson)
-        }).catch(() => {});
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (!pc) return;
+      if (pc.connectionState === 'connected') {
+        if (onStatus) onStatus('live');
+      } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+        if (onStatus) onStatus('disconnected');
       }
-    }
-  };
+    };
+
+    pc.onicecandidate = (evt) => {
+      if (evt.candidate) {
+        const candJson = evt.candidate.toJSON();
+        if (broadcastChannel) {
+          try {
+            broadcastChannel.postMessage({
+              type: 'RTC_ICE_ADMIN',
+              sessionId,
+              clientId: targetClientId,
+              candidate: candJson
+            });
+          } catch(e) {}
+        }
+        if (dbUrl) {
+          fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/webrtc/${encodeURIComponent(targetClientId)}/cands_admin.json`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(candJson)
+          }).catch(() => {});
+        }
+      }
+    };
+  }
+
+  initPeer();
 
   async function handleOffer(offerData) {
-    if (offerApplied || isClosed || !pc || pc.signalingState !== 'stable') return;
+    if (isClosed || !pc) return;
     try {
-      offerApplied = true;
-      await pc.setRemoteDescription(new RTCSessionDescription(offerData));
+      await pc.setRemoteDescription(new RTCSessionDescription({
+        type: offerData.type || 'offer',
+        sdp: offerData.sdp
+      }));
 
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
@@ -940,7 +931,7 @@ export function startAdminWebRTCAudio(sessionId, targetClientId, onStream, onSta
   }
 
   function handleReaderCandidate(candData) {
-    if (!pc || pc.signalingState === 'closed') return;
+    if (!pc || pc.signalingState === 'closed' || !pc.remoteDescription) return;
     try {
       pc.addIceCandidate(new RTCIceCandidate(candData)).catch(() => {});
     } catch(e) {}
@@ -951,7 +942,12 @@ export function startAdminWebRTCAudio(sessionId, targetClientId, onStream, onSta
     broadcastChannel.addEventListener('message', (ev) => {
       if (isClosed || !ev.data || ev.data.sessionId !== sessionId || ev.data.clientId !== targetClientId) return;
       if (ev.data.type === 'RTC_OFFER' && ev.data.offer) {
-        handleOffer(ev.data.offer);
+        const offerTs = ev.data.offer.ts || Date.now();
+        if (offerTs !== lastOfferTs) {
+          lastOfferTs = offerTs;
+          initPeer();
+          handleOffer(ev.data.offer);
+        }
       } else if (ev.data.type === 'RTC_ICE_READER' && ev.data.candidate) {
         handleReaderCandidate(ev.data.candidate);
       }
@@ -965,16 +961,18 @@ export function startAdminWebRTCAudio(sessionId, targetClientId, onStream, onSta
       const res = await fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/webrtc/${encodeURIComponent(targetClientId)}.json`);
       if (!res.ok) return;
       const data = await res.json();
-      if (!data) {
-        if (!offerApplied && onStatus) onStatus('offline');
-        return;
+      if (!data) return;
+
+      if (data.offer) {
+        const offerTs = data.offer.ts || 1;
+        if (offerTs !== lastOfferTs) {
+          lastOfferTs = offerTs;
+          initPeer();
+          await handleOffer(data.offer);
+        }
       }
 
-      if (data.offer && !offerApplied) {
-        await handleOffer(data.offer);
-      }
-
-      if (data.cands_reader) {
+      if (data.cands_reader && pc && pc.remoteDescription) {
         for (const [key, cand] of Object.entries(data.cands_reader)) {
           if (cand && !appliedReaderCandidates.has(key)) {
             appliedReaderCandidates.add(key);

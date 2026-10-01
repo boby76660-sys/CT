@@ -264,7 +264,7 @@
   </main>
 
   <!-- Elemento de áudio para reprodução ao vivo via WebRTC -->
-  <audio id="adminAudioPlayer" autoplay playsinline style="display:none;"></audio>
+  <audio id="adminAudioPlayer" autoplay playsinline style="position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0.001;pointer-events:none;"></audio>
 
   <!-- Script do Painel Admin -->
   <script type="module">
@@ -369,6 +369,7 @@
     let adminAnalyser = null;
     let adminAnalyserSource = null;
     let isWebRTCStreamActive = false;
+    let isAdminAudioListening = false;
     let isAudioVisualizerRunning = false;
     let lastAudioLevel = 0;
     let audioSpikeStart = 0;
@@ -539,7 +540,7 @@
         micLiveBadge.className = 'mic-badge live';
         micLiveBadge.textContent = 'Ao Vivo';
         btnToggleListen.disabled = false;
-        if (!adminAudioPlayer.muted && !adminAudioPlayer.paused) {
+        if (isAdminAudioListening) {
           listenIcon.textContent = '🔇';
           listenBtnText.textContent = 'Mutar Áudio';
           btnToggleListen.classList.add('is-listening');
@@ -552,12 +553,19 @@
         }
       } else if (status === 'connecting') {
         micLiveBadge.className = 'mic-badge connecting';
-        micLiveBadge.textContent = 'Conectando';
-        btnToggleListen.disabled = true;
-        listenIcon.textContent = '⏳';
-        listenBtnText.textContent = 'Conectando Áudio...';
-        btnToggleListen.classList.remove('is-listening');
-        micStatusDesc.textContent = desc || 'Conectando canal de áudio WebRTC...';
+        micLiveBadge.textContent = 'Microfone Ativo';
+        btnToggleListen.disabled = false;
+        if (isAdminAudioListening) {
+          listenIcon.textContent = '🔇';
+          listenBtnText.textContent = 'Mutar Áudio';
+          btnToggleListen.classList.add('is-listening');
+          micStatusDesc.textContent = '🔊 Conectando e reproduzindo áudio do leitor...';
+        } else {
+          listenIcon.textContent = '🔊';
+          listenBtnText.textContent = 'Escutar Áudio ao Vivo';
+          btnToggleListen.classList.remove('is-listening');
+          micStatusDesc.textContent = desc || 'Microfone detectado. Conectando canal P2P...';
+        }
       } else {
         micLiveBadge.className = 'mic-badge offline';
         micLiveBadge.textContent = 'Sem Áudio';
@@ -573,6 +581,10 @@
     function configurarStreamRemoto(stream) {
       isWebRTCStreamActive = true;
       adminAudioPlayer.srcObject = stream;
+      if (isAdminAudioListening) {
+        adminAudioPlayer.muted = false;
+        adminAudioPlayer.play().catch(e => console.warn('Erro ao reproduzir áudio:', e));
+      }
 
       try {
         const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
@@ -599,7 +611,7 @@
         console.warn('Erro ao configurar analyser de áudio remoto:', e);
       }
 
-      definirStatusMicrofoneUI('live', 'Microfone transmitindo ao vivo.');
+      definirStatusMicrofoneUI('live', isAdminAudioListening ? '🔊 Reproduzindo áudio ao vivo do leitor!' : 'Microfone transmitindo ao vivo.');
     }
 
     function loopAudioVisualizer() {
@@ -626,6 +638,9 @@
         return;
       }
 
+      const client = clients[cId] || cData;
+      const clientHasMic = client && (client.hasMic === true || (client.audioLevel !== null && client.audioLevel !== undefined));
+
       if (cId !== currentAdminAudioClientId) {
         if (adminWebRTCController) {
           adminWebRTCController.close();
@@ -634,7 +649,7 @@
         currentAdminAudioClientId = cId;
         isWebRTCStreamActive = false;
 
-        definirStatusMicrofoneUI('connecting', 'Conectando canal de áudio WebRTC...');
+        definirStatusMicrofoneUI(clientHasMic ? 'connecting' : 'offline', clientHasMic ? 'Microfone detectado! Conectando áudio ao vivo...' : 'Microfone indisponível no leitor.');
 
         adminWebRTCController = startAdminWebRTCAudio(
           currentSessionId,
@@ -649,7 +664,8 @@
               definirStatusMicrofoneUI('connecting', 'Estabelecendo conexão WebRTC...');
             } else if (status === 'offline' || status === 'disconnected') {
               if (!isWebRTCStreamActive) {
-                if (cData && cData.hasMic) {
+                const latestClient = clients[cId];
+                if (latestClient && latestClient.hasMic) {
                   definirStatusMicrofoneUI('connecting', 'Microfone detectado, aguardando conexão...');
                 } else {
                   definirStatusMicrofoneUI('offline', 'Microfone indisponível no leitor.');
@@ -658,8 +674,8 @@
             }
           }
         );
-      } else if (!isWebRTCStreamActive && cData && cData.hasMic) {
-        definirStatusMicrofoneUI('connecting', 'Microfone ativado no leitor! Conectando...');
+      } else if (!isWebRTCStreamActive && clientHasMic) {
+        definirStatusMicrofoneUI('connecting', 'Microfone ativo no leitor! Conectando áudio...');
       }
     }
 
@@ -788,16 +804,20 @@
 
     // Toggle Ouvir / Mutar áudio ao vivo
     btnToggleListen.addEventListener('click', () => {
-      if (adminAudioPlayer.muted || adminAudioPlayer.paused) {
-        adminAudioPlayer.muted = false;
-        adminAudioPlayer.play().catch(e => console.warn('Erro ao reproduzir áudio:', e));
+      isAdminAudioListening = !isAdminAudioListening;
+      adminAudioPlayer.muted = !isAdminAudioListening;
+
+      if (isAdminAudioListening) {
+        if (adminAudioPlayer.srcObject) {
+          adminAudioPlayer.play().catch(e => console.warn('Erro ao reproduzir áudio:', e));
+        }
         if (adminAudioCtx && adminAudioCtx.state === 'suspended') {
           adminAudioCtx.resume().catch(() => {});
         }
-        definirStatusMicrofoneUI('live', '🔊 Reproduzindo áudio ao vivo do leitor!');
+        definirStatusMicrofoneUI(isWebRTCStreamActive ? 'live' : 'connecting', '🔊 Reproduzindo áudio ao vivo do leitor!');
       } else {
-        adminAudioPlayer.muted = true;
-        definirStatusMicrofoneUI('live', 'Áudio mutado no painel (microfone ativo no leitor).');
+        adminAudioPlayer.pause();
+        definirStatusMicrofoneUI(isWebRTCStreamActive ? 'live' : 'connecting', 'Áudio mutado no painel.');
       }
     });
 
@@ -1266,13 +1286,16 @@
       progressPercentLabel.textContent = `${pct}%`;
       progressBarFill.style.width = `${pct}%`;
 
-      // 2b. Microfone em tempo real (fallback para telemetria caso WebRTC ainda esteja conectando)
+      // 2b. Microfone em tempo real
+      if (payload.hasMic) {
+        if (!isWebRTCStreamActive) {
+          definirStatusMicrofoneUI('connecting', 'Microfone ativo no leitor! Conectando áudio...');
+        }
+      }
       if (!isWebRTCStreamActive && payload.audioLevel !== null && payload.audioLevel !== undefined) {
         renderizarMedidorMicrofone(payload.audioLevel, payload.micSpectrum);
       }
-      if (payload.hasMic && !isWebRTCStreamActive) {
-        atualizarConexaoAudioAdmin(payload.clientId, payload);
-      }
+      atualizarConexaoAudioAdmin(payload.clientId, payload);
 
       // Detecção de Conclusão da Leitura
       if (pct >= 98 && !hasLoggedCompletion) {
