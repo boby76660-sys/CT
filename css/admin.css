@@ -941,7 +941,8 @@ body {
   box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05);
   width: 100%;
   max-width: 960px;
-  max-height: 90vh;
+  height: 88vh;
+  max-height: 88vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -955,13 +956,14 @@ body {
 
 /* Cabeçalho do Modal */
 .editor-modal-header {
-  padding: 18px 24px;
+  flex-shrink: 0;
+  padding: 16px 24px;
   border-bottom: 1px solid var(--admin-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  background: rgba(24, 34, 52, 0.6);
+  background: rgba(24, 34, 52, 0.7);
   flex-wrap: wrap;
 }
 
@@ -1042,6 +1044,7 @@ body {
 
 /* Painel de Importação Rápida de Texto Completo */
 .quick-import-panel {
+  flex-shrink: 0;
   padding: 16px 24px;
   background: rgba(30, 41, 59, 0.7);
   border-bottom: 1px solid var(--admin-border);
@@ -1121,21 +1124,42 @@ body {
 
 /* Corpo do Editor (Lista de Blocos) */
 .editor-modal-body {
-  padding: 20px 24px;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
-  max-height: calc(90vh - 160px);
+  -webkit-overflow-scrolling: touch;
+  padding: 20px 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
   background: #0c101c;
 }
 
+.editor-modal-body::-webkit-scrollbar {
+  width: 8px;
+}
+.editor-modal-body::-webkit-scrollbar-track {
+  background: #090d16;
+}
+.editor-modal-body::-webkit-scrollbar-thumb {
+  background: #26354f;
+  border-radius: 4px;
+}
+.editor-modal-body::-webkit-scrollbar-thumb:hover {
+  background: #3b82f6;
+}
+
 /* Card de Bloco */
 .editor-block-card {
+  flex: 0 0 auto !important;
+  width: 100%;
+  min-height: fit-content;
   background: var(--admin-surface);
   border: 1px solid var(--admin-border);
   border-radius: 8px;
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -1144,8 +1168,9 @@ body {
 }
 
 .block-card-header {
-  padding: 8px 14px;
-  background: rgba(24, 34, 52, 0.5);
+  flex-shrink: 0;
+  padding: 10px 14px;
+  background: rgba(24, 34, 52, 0.6);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;
   align-items: center;
@@ -1199,23 +1224,30 @@ body {
 
 /* Área de Texto do Parágrafo */
 .block-card-body {
-  padding: 12px 14px;
+  padding: 14px 16px;
+  background: rgba(18, 24, 38, 0.4);
+  display: block;
+}
+
+.editor-block-card.collapsed .block-card-body {
+  display: none !important;
 }
 
 .paragraph-textarea {
   width: 100%;
-  min-height: 75px;
+  min-height: 95px;
   background: #090d16;
   border: 1px solid var(--admin-border);
   border-radius: 6px;
   color: #f1f5f9;
   font-family: var(--font-ui);
-  font-size: 0.92rem;
+  font-size: 0.95rem;
   line-height: 1.6;
-  padding: 10px 12px;
+  padding: 12px 14px;
   resize: vertical;
   outline: none;
   box-sizing: border-box;
+  display: block;
 }
 
 .paragraph-textarea:focus {

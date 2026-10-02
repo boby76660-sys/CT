@@ -246,6 +246,9 @@
           <button type="button" id="btnAddPhoto" class="btn-editor-tool" title="Adicionar nova foto colada">
             🖼️ Foto Colada
           </button>
+          <button type="button" id="btnToggleCollapseAll" class="btn-editor-tool" title="Recolher ou expandir todos os blocos">
+            ⇕ Recolher/Expandir
+          </button>
           <button type="button" id="btnCloseEditor" class="btn-editor-close" title="Fechar editor">&times;</button>
         </div>
       </div>
@@ -490,7 +493,10 @@
           html += `
             <div class="editor-block-card paragraph-block" data-index="${idx}">
               <div class="block-card-header">
-                <div class="block-type-pill"><span class="pill-icon">📝</span> Parágrafo #${pCount}</div>
+                <div class="block-type-pill" style="cursor:pointer; user-select:none;" title="Clique para recolher/expandir">
+                  <span class="collapse-icon" style="display:inline-block; width:12px; font-size:0.75rem;">▾</span>
+                  <span class="pill-icon">📝</span> Parágrafo #${pCount}
+                </div>
                 <div class="block-tools">
                   <button type="button" class="btn-block-tool btn-move-up" title="Mover para cima" ${isFirst ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▲</button>
                   <button type="button" class="btn-block-tool btn-move-down" title="Mover para baixo" ${isLast ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▼</button>
@@ -513,7 +519,10 @@
           html += `
             <div class="editor-block-card photo-block" data-index="${idx}">
               <div class="block-card-header">
-                <div class="block-type-pill photo-pill"><span class="pill-icon">🖼️</span> Foto Colada #${imgCount}</div>
+                <div class="block-type-pill photo-pill" style="cursor:pointer; user-select:none;" title="Clique para recolher/expandir">
+                  <span class="collapse-icon" style="display:inline-block; width:12px; font-size:0.75rem;">▾</span>
+                  <span class="pill-icon">🖼️</span> Foto Colada #${imgCount}
+                </div>
                 <div class="block-tools">
                   <button type="button" class="btn-block-tool btn-move-up" title="Mover para cima" ${isFirst ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▲</button>
                   <button type="button" class="btn-block-tool btn-move-down" title="Mover para baixo" ${isLast ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▼</button>
@@ -613,6 +622,18 @@
       cards.forEach(card => {
         const idx = parseInt(card.dataset.index, 10);
         if (isNaN(idx) || !editorBlocks[idx]) return;
+
+        // 0. Toggle de Recolher/Expandir Card Individual
+        const pill = card.querySelector('.block-type-pill');
+        const collapseIcon = card.querySelector('.collapse-icon');
+        if (pill) {
+          pill.onclick = () => {
+            card.classList.toggle('collapsed');
+            if (collapseIcon) {
+              collapseIcon.textContent = card.classList.contains('collapsed') ? '▸' : '▾';
+            }
+          };
+        }
 
         // 1. Textarea do Parágrafo
         const textarea = card.querySelector('.paragraph-textarea');
@@ -758,6 +779,21 @@
     if (btnCloseEditor) {
       btnCloseEditor.onclick = () => {
         fecharEditor();
+      };
+    }
+
+    let allBlocksCollapsed = false;
+    const btnToggleCollapseAll = document.getElementById('btnToggleCollapseAll');
+    if (btnToggleCollapseAll) {
+      btnToggleCollapseAll.onclick = () => {
+        allBlocksCollapsed = !allBlocksCollapsed;
+        const cards = editorBlocksList.querySelectorAll('.editor-block-card');
+        cards.forEach(c => {
+          if (allBlocksCollapsed) c.classList.add('collapsed');
+          else c.classList.remove('collapsed');
+          const icon = c.querySelector('.collapse-icon');
+          if (icon) icon.textContent = allBlocksCollapsed ? '▸' : '▾';
+        });
       };
     }
 
