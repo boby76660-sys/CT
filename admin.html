@@ -33,6 +33,11 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
         Testar Leitor
       </button>
+
+      <button id="btnOpenEditor" class="btn-editor" title="Editar texto e fotos da carta sem mexer no código">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+        Editar Carta
+      </button>
     </div>
   </header>
 
@@ -220,10 +225,77 @@
 
   </main>
 
+  <!-- Modal do Editor de Conteúdo da Carta -->
+  <div id="letterEditorModal" class="editor-modal-overlay" style="display: none;">
+    <div class="editor-modal-window">
+      
+      <!-- Cabeçalho do Editor -->
+      <div class="editor-modal-header">
+        <div class="editor-title-group">
+          <div class="editor-badge">Modo Edição</div>
+          <h2 class="editor-title">Editor de Conteúdo da Carta</h2>
+          <span class="editor-subtitle">Edite o texto e as fotos coladas (ângulos, posições e fitas) em tempo real</span>
+        </div>
+        <div class="editor-header-actions">
+          <button type="button" id="btnQuickImportText" class="btn-editor-tool" title="Colar texto completo e transformar em parágrafos">
+            📋 Colar Texto Completo
+          </button>
+          <button type="button" id="btnAddParagraph" class="btn-editor-tool" title="Adicionar novo parágrafo">
+            ➕ Parágrafo
+          </button>
+          <button type="button" id="btnAddPhoto" class="btn-editor-tool" title="Adicionar nova foto colada">
+            🖼️ Foto Colada
+          </button>
+          <button type="button" id="btnCloseEditor" class="btn-editor-close" title="Fechar editor">&times;</button>
+        </div>
+      </div>
+
+      <!-- Subpainel: Colar Texto Completo (aparece sob demanda) -->
+      <div id="quickImportPanel" class="quick-import-panel" style="display: none;">
+        <div class="quick-import-header">
+          <strong>📋 Colar Texto Completo</strong>
+          <span>Cole seu texto corrido abaixo. Linhas em branco separarão os parágrafos automaticamente.</span>
+        </div>
+        <textarea id="quickImportTextarea" class="quick-import-textarea" placeholder="Cole aqui seu texto completo..."></textarea>
+        <div class="quick-import-actions">
+          <label class="quick-import-checkbox">
+            <input type="checkbox" id="quickImportKeepPhotos" checked> Manter as fotos existentes nos lugares atuais
+          </label>
+          <div>
+            <button type="button" id="btnCancelQuickImport" class="btn-secondary-sm">Cancelar</button>
+            <button type="button" id="btnApplyQuickImport" class="btn-primary-sm">Importar Parágrafos</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Corpo dos Blocos (Lista scrollável) -->
+      <div class="editor-modal-body" id="editorBlocksList">
+        <!-- Renderizado dinamicamente -->
+      </div>
+
+      <!-- Rodapé com Ações de Salvamento -->
+      <div class="editor-modal-footer">
+        <div class="editor-footer-left">
+          <button type="button" id="btnResetToDefault" class="btn-link-danger">↺ Restaurar Modelo Padrão</button>
+          <span id="editorStatsLabel" class="editor-stats-text">0 parágrafos • 0 fotos</span>
+        </div>
+        <div class="editor-footer-right">
+          <button type="button" id="btnCancelEditor" class="btn-secondary">Cancelar</button>
+          <button type="button" id="btnSaveLetter" class="btn-save-glow">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            Salvar e Atualizar Carta
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
   <!-- Script do Painel Admin -->
   <script type="module">
     import { startAdminListening } from './tracker.js';
     import { firebaseConfig, isFirebaseConfigured } from './firebase-config.js';
+    import { loadLetterContent, saveLetterContent, compressImageFile, DEFAULT_LETTER_BLOCKS } from './letter-content.js';
 
     // Elementos da interface
     const sessionIdInput = document.getElementById('sessionIdInput');
@@ -311,6 +383,517 @@
     const reportCard = document.getElementById('reportCard');
     const reportContainer = document.getElementById('reportContainer');
     const reportCountBadge = document.getElementById('reportCountBadge');
+
+    // =========================================================================
+    // MÓDULO DO EDITOR VISUAL DE CONTEÚDO DA CARTA (TEXTO & FOTOS)
+    // =========================================================================
+    const btnOpenEditor = document.getElementById('btnOpenEditor');
+    const letterEditorModal = document.getElementById('letterEditorModal');
+    const btnCloseEditor = document.getElementById('btnCloseEditor');
+    const btnCancelEditor = document.getElementById('btnCancelEditor');
+    const btnSaveLetter = document.getElementById('btnSaveLetter');
+    const btnResetToDefault = document.getElementById('btnResetToDefault');
+    const btnAddParagraph = document.getElementById('btnAddParagraph');
+    const btnAddPhoto = document.getElementById('btnAddPhoto');
+    const editorBlocksList = document.getElementById('editorBlocksList');
+    const editorStatsLabel = document.getElementById('editorStatsLabel');
+
+    const btnQuickImportText = document.getElementById('btnQuickImportText');
+    const quickImportPanel = document.getElementById('quickImportPanel');
+    const quickImportTextarea = document.getElementById('quickImportTextarea');
+    const quickImportKeepPhotos = document.getElementById('quickImportKeepPhotos');
+    const btnCancelQuickImport = document.getElementById('btnCancelQuickImport');
+    const btnApplyQuickImport = document.getElementById('btnApplyQuickImport');
+
+    let editorBlocks = [];
+
+    function escapeHtmlAdmin(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function showAdminToast(message) {
+      const existing = document.querySelector('.admin-toast');
+      if (existing) existing.remove();
+      const toast = document.createElement('div');
+      toast.className = 'admin-toast';
+      toast.innerHTML = `<span style="font-size:1.1rem;">✓</span> <span>${message}</span>`;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(15px)';
+        setTimeout(() => toast.remove(), 320);
+      }, 3500);
+    }
+
+    async function abrirEditor() {
+      letterEditorModal.style.display = 'flex';
+      quickImportPanel.style.display = 'none';
+      editorBlocksList.innerHTML = '<div style="color:var(--admin-text-muted); text-align:center; padding:40px;">Carregando conteúdo da carta...</div>';
+
+      try {
+        const blocks = await loadLetterContent(currentSessionId);
+        editorBlocks = JSON.parse(JSON.stringify(blocks || DEFAULT_LETTER_BLOCKS));
+      } catch (e) {
+        editorBlocks = JSON.parse(JSON.stringify(DEFAULT_LETTER_BLOCKS));
+      }
+
+      renderizarCardsEditor();
+    }
+
+    function fecharEditor() {
+      letterEditorModal.style.display = 'none';
+      quickImportPanel.style.display = 'none';
+    }
+
+    function atualizarStatsEditor() {
+      const pCount = editorBlocks.filter(b => b.type === 'paragraph').length;
+      const imgCount = editorBlocks.filter(b => b.type === 'photo').length;
+      if (editorStatsLabel) {
+        editorStatsLabel.textContent = `${pCount} parágrafo${pCount !== 1 ? 's' : ''} • ${imgCount} foto${imgCount !== 1 ? 's' : ''} (Sessão: ${currentSessionId})`;
+      }
+    }
+
+    function renderizarCardsEditor() {
+      atualizarStatsEditor();
+
+      if (!editorBlocks.length) {
+        editorBlocksList.innerHTML = `
+          <div style="text-align:center; padding:50px 20px; color:var(--admin-text-muted);">
+            <p style="margin-bottom:14px; font-size:0.95rem;">Sua carta ainda não tem nenhum conteúdo.</p>
+            <button type="button" class="btn-primary-sm" id="btnEmptyAddP">+ Criar Primeiro Parágrafo</button>
+          </div>
+        `;
+        const btnEmpty = document.getElementById('btnEmptyAddP');
+        if (btnEmpty) btnEmpty.onclick = () => {
+          editorBlocks.push({ id: 'p_' + Date.now(), type: 'paragraph', text: '' });
+          renderizarCardsEditor();
+        };
+        return;
+      }
+
+      let html = '';
+      let pCount = 0;
+      let imgCount = 0;
+
+      editorBlocks.forEach((block, idx) => {
+        const isFirst = idx === 0;
+        const isLast = idx === editorBlocks.length - 1;
+
+        if (block.type === 'paragraph') {
+          pCount++;
+          html += `
+            <div class="editor-block-card paragraph-block" data-index="${idx}">
+              <div class="block-card-header">
+                <div class="block-type-pill"><span class="pill-icon">📝</span> Parágrafo #${pCount}</div>
+                <div class="block-tools">
+                  <button type="button" class="btn-block-tool btn-move-up" title="Mover para cima" ${isFirst ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▲</button>
+                  <button type="button" class="btn-block-tool btn-move-down" title="Mover para baixo" ${isLast ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▼</button>
+                  <button type="button" class="btn-block-tool danger btn-delete-block" title="Excluir este parágrafo">🗑️</button>
+                </div>
+              </div>
+              <div class="block-card-body">
+                <textarea class="paragraph-textarea" placeholder="Digite seu parágrafo aqui...">${escapeHtmlAdmin(block.text || '')}</textarea>
+              </div>
+            </div>
+          `;
+        } else if (block.type === 'photo') {
+          imgCount++;
+          const pos = block.position || 'photo-center';
+          const tape = block.tape || 'tape-top';
+          const angle = (block.angle !== undefined && block.angle !== null && block.angle !== '') ? Number(block.angle) : 0;
+          const src = block.src || 'images/photo-1.jpg';
+          const caption = block.caption || '';
+
+          html += `
+            <div class="editor-block-card photo-block" data-index="${idx}">
+              <div class="block-card-header">
+                <div class="block-type-pill photo-pill"><span class="pill-icon">🖼️</span> Foto Colada #${imgCount}</div>
+                <div class="block-tools">
+                  <button type="button" class="btn-block-tool btn-move-up" title="Mover para cima" ${isFirst ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▲</button>
+                  <button type="button" class="btn-block-tool btn-move-down" title="Mover para baixo" ${isLast ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▼</button>
+                  <button type="button" class="btn-block-tool danger btn-delete-block" title="Excluir esta foto">🗑️</button>
+                </div>
+              </div>
+              <div class="block-card-body photo-block-grid">
+                
+                <div class="photo-controls-col">
+                  
+                  <!-- Origem / Upload de Imagem -->
+                  <div class="photo-field-group">
+                    <label>Imagem da Foto:</label>
+                    <div class="photo-input-row">
+                      <label class="btn-upload-file" title="Upload direto do celular ou PC">
+                        📁 Escolher do Celular/PC
+                        <input type="file" accept="image/*" class="photo-file-upload" style="display:none;">
+                      </label>
+                      <input type="text" class="photo-src-input" value="${escapeHtmlAdmin(src)}" placeholder="images/photo-1.jpg ou link da internet">
+                    </div>
+                    <div class="photo-presets-row">
+                      <span>Exemplos locais:</span>
+                      <button type="button" class="btn-preset-pill" data-src="images/photo-1.jpg">🌊 Praia</button>
+                      <button type="button" class="btn-preset-pill" data-src="images/photo-2.jpg">☕ Café</button>
+                    </div>
+                  </div>
+
+                  <!-- Posição da Foto -->
+                  <div class="photo-field-group">
+                    <label>Posição no Texto:</label>
+                    <div class="segmented-control position-control">
+                      <button type="button" class="seg-btn ${pos === 'photo-left' ? 'active' : ''}" data-pos="photo-left">⬅️ Esquerda</button>
+                      <button type="button" class="seg-btn ${pos === 'photo-center' ? 'active' : ''}" data-pos="photo-center">⏺️ Centro</button>
+                      <button type="button" class="seg-btn ${pos === 'photo-right' ? 'active' : ''}" data-pos="photo-right">➡️ Direita</button>
+                    </div>
+                  </div>
+
+                  <!-- Ângulo de Inclinação com Slider e Pills -->
+                  <div class="photo-field-group">
+                    <div class="label-with-val">
+                      <label>Ângulo de Inclinação:</label>
+                      <strong class="angle-val-display">${angle > 0 ? '+' : ''}${angle}°</strong>
+                    </div>
+                    <div class="angle-slider-row">
+                      <input type="range" class="photo-angle-slider" min="-12" max="12" step="0.5" value="${angle}">
+                      <div class="angle-quick-pills">
+                        <button type="button" class="btn-angle-pill" data-angle="-4">-4°</button>
+                        <button type="button" class="btn-angle-pill" data-angle="-2.5">-2.5°</button>
+                        <button type="button" class="btn-angle-pill" data-angle="0">0°</button>
+                        <button type="button" class="btn-angle-pill" data-angle="2.5">+2.5°</button>
+                        <button type="button" class="btn-angle-pill" data-angle="4">+4°</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Estilo da Fita Adesiva -->
+                  <div class="photo-field-group">
+                    <label>Fita Adesiva:</label>
+                    <div class="segmented-control tape-control">
+                      <button type="button" class="seg-btn ${tape === 'tape-top' ? 'active' : ''}" data-tape="tape-top">1 Fita no Topo</button>
+                      <button type="button" class="seg-btn ${tape === 'tape-double' ? 'active' : ''}" data-tape="tape-double">2 Fitas nos Cantos</button>
+                      <button type="button" class="seg-btn ${tape === 'tape-none' ? 'active' : ''}" data-tape="tape-none">Sem Fita (Colada)</button>
+                    </div>
+                  </div>
+
+                  <!-- Legenda Manuscrita Opcional -->
+                  <div class="photo-field-group">
+                    <label>Legenda Manuscrita (Opcional):</label>
+                    <input type="text" class="photo-caption-input" value="${escapeHtmlAdmin(caption)}" placeholder="Ex: Lembrança daquele entardecer...">
+                  </div>
+
+                </div>
+
+                <!-- Prévia Visual da Foto com Rotação ao Vivo -->
+                <div class="photo-preview-col">
+                  <span class="preview-tag">Prévia do Ângulo</span>
+                  <div class="photo-preview-stage">
+                    <div class="taped-photo-preview ${tape}" style="transform: rotate(${angle}deg);">
+                      <img src="${src}" alt="Prévia">
+                      <div class="preview-caption" style="${caption ? '' : 'display:none;'}">${escapeHtmlAdmin(caption)}</div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          `;
+        }
+      });
+
+      editorBlocksList.innerHTML = html;
+      vincularEventosCardsEditor();
+    }
+
+    function vincularEventosCardsEditor() {
+      const cards = editorBlocksList.querySelectorAll('.editor-block-card');
+      cards.forEach(card => {
+        const idx = parseInt(card.dataset.index, 10);
+        if (isNaN(idx) || !editorBlocks[idx]) return;
+
+        // 1. Textarea do Parágrafo
+        const textarea = card.querySelector('.paragraph-textarea');
+        if (textarea) {
+          textarea.addEventListener('input', () => {
+            editorBlocks[idx].text = textarea.value;
+          });
+        }
+
+        // 2. Mover para Cima
+        const btnUp = card.querySelector('.btn-move-up');
+        if (btnUp && idx > 0) {
+          btnUp.onclick = () => {
+            [editorBlocks[idx - 1], editorBlocks[idx]] = [editorBlocks[idx], editorBlocks[idx - 1]];
+            renderizarCardsEditor();
+          };
+        }
+
+        // 3. Mover para Baixo
+        const btnDown = card.querySelector('.btn-move-down');
+        if (btnDown && idx < editorBlocks.length - 1) {
+          btnDown.onclick = () => {
+            [editorBlocks[idx], editorBlocks[idx + 1]] = [editorBlocks[idx + 1], editorBlocks[idx]];
+            renderizarCardsEditor();
+          };
+        }
+
+        // 4. Excluir Bloco
+        const btnDel = card.querySelector('.btn-delete-block');
+        if (btnDel) {
+          btnDel.onclick = () => {
+            editorBlocks.splice(idx, 1);
+            renderizarCardsEditor();
+          };
+        }
+
+        // 5. Upload de Imagem (Celular/PC)
+        const fileInput = card.querySelector('.photo-file-upload');
+        if (fileInput) {
+          fileInput.onchange = async () => {
+            const file = fileInput.files[0];
+            if (!file) return;
+            try {
+              const dataUrl = await compressImageFile(file, 1200, 0.82);
+              editorBlocks[idx].src = dataUrl;
+              renderizarCardsEditor();
+            } catch (err) {
+              alert(err.message || 'Erro ao carregar imagem.');
+            }
+          };
+        }
+
+        // 6. Input de URL da Foto
+        const srcInput = card.querySelector('.photo-src-input');
+        const previewImg = card.querySelector('.taped-photo-preview img');
+        if (srcInput && previewImg) {
+          srcInput.addEventListener('input', () => {
+            editorBlocks[idx].src = srcInput.value;
+            previewImg.src = srcInput.value;
+          });
+        }
+
+        // 7. Botões de Presets de Foto
+        const presetBtns = card.querySelectorAll('.btn-preset-pill');
+        presetBtns.forEach(pBtn => {
+          pBtn.onclick = () => {
+            editorBlocks[idx].src = pBtn.dataset.src;
+            renderizarCardsEditor();
+          };
+        });
+
+        // 8. Botões de Posição
+        const posBtns = card.querySelectorAll('.position-control .seg-btn');
+        posBtns.forEach(pBtn => {
+          pBtn.onclick = () => {
+            editorBlocks[idx].position = pBtn.dataset.pos;
+            posBtns.forEach(b => b.classList.remove('active'));
+            pBtn.classList.add('active');
+          };
+        });
+
+        // 9. Slider de Ângulo
+        const angleSlider = card.querySelector('.photo-angle-slider');
+        const angleDisplay = card.querySelector('.angle-val-display');
+        const previewEl = card.querySelector('.taped-photo-preview');
+        if (angleSlider && angleDisplay && previewEl) {
+          angleSlider.addEventListener('input', () => {
+            const val = parseFloat(angleSlider.value);
+            editorBlocks[idx].angle = val;
+            angleDisplay.textContent = `${val > 0 ? '+' : ''}${val}°`;
+            previewEl.style.transform = `rotate(${val}deg)`;
+          });
+        }
+
+        // 10. Botões de Ângulo Rápido
+        const anglePills = card.querySelectorAll('.btn-angle-pill');
+        anglePills.forEach(pill => {
+          pill.onclick = () => {
+            const val = parseFloat(pill.dataset.angle);
+            editorBlocks[idx].angle = val;
+            if (angleSlider) angleSlider.value = val;
+            if (angleDisplay) angleDisplay.textContent = `${val > 0 ? '+' : ''}${val}°`;
+            if (previewEl) previewEl.style.transform = `rotate(${val}deg)`;
+          };
+        });
+
+        // 11. Botões de Fita
+        const tapeBtns = card.querySelectorAll('.tape-control .seg-btn');
+        if (previewEl) {
+          tapeBtns.forEach(tBtn => {
+            tBtn.onclick = () => {
+              const tapeVal = tBtn.dataset.tape;
+              editorBlocks[idx].tape = tapeVal;
+              tapeBtns.forEach(b => b.classList.remove('active'));
+              tBtn.classList.add('active');
+
+              previewEl.classList.remove('tape-top', 'tape-double', 'tape-none');
+              previewEl.classList.add(tapeVal);
+            };
+          });
+        }
+
+        // 12. Input de Legenda
+        const captionInput = card.querySelector('.photo-caption-input');
+        const previewCaption = card.querySelector('.preview-caption');
+        if (captionInput && previewCaption) {
+          captionInput.addEventListener('input', () => {
+            editorBlocks[idx].caption = captionInput.value;
+            previewCaption.textContent = captionInput.value;
+            previewCaption.style.display = captionInput.value ? 'block' : 'none';
+          });
+        }
+      });
+    }
+
+    // Ações do Cabeçalho e Rodapé do Editor
+    if (btnOpenEditor) {
+      btnOpenEditor.onclick = () => {
+        abrirEditor();
+      };
+    }
+
+    if (btnCloseEditor) {
+      btnCloseEditor.onclick = () => {
+        fecharEditor();
+      };
+    }
+
+    if (btnCancelEditor) {
+      btnCancelEditor.onclick = () => {
+        fecharEditor();
+      };
+    }
+
+    if (btnAddParagraph) {
+      btnAddParagraph.onclick = () => {
+        editorBlocks.push({
+          id: 'p_' + Date.now(),
+          type: 'paragraph',
+          text: ''
+        });
+        renderizarCardsEditor();
+        setTimeout(() => {
+          editorBlocksList.scrollTop = editorBlocksList.scrollHeight;
+          const lastCard = editorBlocksList.querySelector('.editor-block-card:last-child textarea');
+          if (lastCard) lastCard.focus();
+        }, 50);
+      };
+    }
+
+    if (btnAddPhoto) {
+      btnAddPhoto.onclick = () => {
+        editorBlocks.push({
+          id: 'img_' + Date.now(),
+          type: 'photo',
+          src: 'images/photo-1.jpg',
+          alt: 'Foto colada',
+          caption: '',
+          position: 'photo-center',
+          angle: -2.0,
+          tape: 'tape-top'
+        });
+        renderizarCardsEditor();
+        setTimeout(() => {
+          editorBlocksList.scrollTop = editorBlocksList.scrollHeight;
+        }, 50);
+      };
+    }
+
+    if (btnResetToDefault) {
+      btnResetToDefault.onclick = () => {
+        if (confirm('Deseja restaurar o modelo padrão de texto e fotos? As alterações não salvas serão substituídas.')) {
+          editorBlocks = JSON.parse(JSON.stringify(DEFAULT_LETTER_BLOCKS));
+          renderizarCardsEditor();
+        }
+      };
+    }
+
+    // Importação Rápida de Texto
+    if (btnQuickImportText) {
+      btnQuickImportText.onclick = () => {
+        quickImportPanel.style.display = quickImportPanel.style.display === 'none' ? 'flex' : 'none';
+        if (quickImportPanel.style.display === 'flex') {
+          quickImportTextarea.focus();
+        }
+      };
+    }
+
+    if (btnCancelQuickImport) {
+      btnCancelQuickImport.onclick = () => {
+        quickImportPanel.style.display = 'none';
+      };
+    }
+
+    if (btnApplyQuickImport) {
+      btnApplyQuickImport.onclick = () => {
+        const rawText = quickImportTextarea.value.trim();
+        if (!rawText) return;
+        const paragraphs = rawText.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+        if (!paragraphs.length) return;
+
+        const keepPhotos = quickImportKeepPhotos.checked;
+        const existingPhotos = keepPhotos ? editorBlocks.filter(b => b.type === 'photo') : [];
+
+        const newBlocks = paragraphs.map((text, i) => ({
+          id: 'p_' + Date.now() + '_' + i,
+          type: 'paragraph',
+          text
+        }));
+
+        if (existingPhotos.length > 0) {
+          const step = Math.max(1, Math.floor(newBlocks.length / (existingPhotos.length + 1)));
+          existingPhotos.forEach((photo, pIdx) => {
+            const insertAt = Math.min(newBlocks.length, (pIdx + 1) * step);
+            newBlocks.splice(insertAt, 0, photo);
+          });
+        }
+
+        editorBlocks = newBlocks;
+        quickImportPanel.style.display = 'none';
+        quickImportTextarea.value = '';
+        renderizarCardsEditor();
+        showAdminToast('Parágrafos importados com sucesso!');
+      };
+    }
+
+    // Salvar e Publicar
+    if (btnSaveLetter) {
+      btnSaveLetter.onclick = async () => {
+        btnSaveLetter.disabled = true;
+        btnSaveLetter.innerHTML = 'Salvando...';
+
+        try {
+          const ok = await saveLetterContent(currentSessionId, editorBlocks);
+          if (ok) {
+            showAdminToast('Carta salva e atualizada com sucesso!');
+
+            // Atualiza imediatamente o espelho do iframe
+            if (mirrorIframe && mirrorIframe.contentWindow) {
+              mirrorIframe.contentWindow.postMessage({
+                type: 'LETTER_CONTENT_UPDATED',
+                blocks: editorBlocks
+              }, '*');
+            }
+
+            fecharEditor();
+          } else {
+            alert('Não foi possível salvar no Firebase. Verifique a conexão.');
+          }
+        } catch (err) {
+          alert('Erro ao salvar: ' + (err.message || err));
+        } finally {
+          btnSaveLetter.disabled = false;
+          btnSaveLetter.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            Salvar e Atualizar Carta
+          `;
+        }
+      };
+    }
+
 
     function formatTime(totalSecs) {
       const mins = Math.floor(totalSecs / 60);

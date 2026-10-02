@@ -34,7 +34,7 @@
       -->
 
       <!-- Conteúdo Contínuo e Plano da Carta -->
-      <div class="letter-body">
+      <div class="letter-body" id="letterBody">
 
         <p>
           Há momentos na cadência dos dias em que as horas parecem suspensas por um fio invisível de calmaria. Escrevo-lhe não pela urgência das notícias do mundo exterior, mas pela necessidade sutil de ancorar pensamentos que, de outro modo, evaporariam na bruma do esquecimento. Enquanto as sombras se alongam suavemente pelo assoalho de madeira, percebo que certas palavras só ganham vida quando encontram a paciência de quem sabe escutar.
@@ -111,13 +111,41 @@
     </article>
   </div>
 
-  <!-- Rastreamento Silencioso de Leitura -->
+  <!-- Rastreamento Silencioso de Leitura e Conteúdo Dinâmico -->
   <script type="module">
     import { startReaderTracking } from './tracker.js';
+    import { loadLetterContent, renderLetterBlocks } from './letter-content.js';
 
     const urlParams = new URLSearchParams(window.location.search);
     const sessionId = urlParams.get('session') || 'leitor-principal';
     const isMirrorMode = urlParams.get('mirror') === '1';
+    const letterBody = document.getElementById('letterBody');
+
+    // 1. Carrega conteúdo dinâmico configurado via Admin (Firebase / Cache Local)
+    loadLetterContent(sessionId).then(blocks => {
+      if (blocks && blocks.length > 0) {
+        renderLetterBlocks(blocks, letterBody);
+      }
+    });
+
+    // 2. Ouve atualizações em tempo real enviadas pelo Admin
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('carta_telemetry_channel');
+        bc.onmessage = (e) => {
+          if (e.data && e.data.type === 'LETTER_CONTENT_UPDATED' && Array.isArray(e.data.blocks)) {
+            renderLetterBlocks(e.data.blocks, letterBody);
+          }
+        };
+      }
+    } catch (e) {}
+
+    // 3. Atualização direta via postMessage (para iframe de espelho no Admin)
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'LETTER_CONTENT_UPDATED' && Array.isArray(e.data.blocks)) {
+        renderLetterBlocks(e.data.blocks, letterBody);
+      }
+    });
 
     if (!isMirrorMode) {
       startReaderTracking(sessionId);

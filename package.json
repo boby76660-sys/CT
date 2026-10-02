@@ -2,6 +2,7 @@
   "name": "carta-realtime",
   "version": "1.0.0",
   "description": "Carta web com espelhamento e rastreamento de leitura em tempo real via Firebase",
+  "type": "module",
   "scripts": {
     "dev": "npx serve .",
     "start": "npx serve ."
