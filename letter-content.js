@@ -98,6 +98,13 @@ export const DEFAULT_LETTER_BLOCKS = [
     id: 'b16',
     type: 'paragraph',
     text: 'Que a serenidade acompanhe seus passos nas horas claras e que a esperança seja seu escudo quando o crepúsculo trouxer o manto das dúvidas. O mundo continuará girando com sua pressa insaciável, mas você tem o poder soberano de escolher quando pausar, respirar fundo e honrar o milagre singular de estar vivo.'
+  },
+  {
+    id: 'b17',
+    type: 'reply_box',
+    label: 'Deixe suas palavras para quem escreveu',
+    placeholder: 'Escreva aqui o que sentiu ao ler esta carta...',
+    buttonText: 'Enviar Resposta'
   }
 ];
 
@@ -111,6 +118,24 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/**
+ * Garante que a lista de blocos possua um campo de resposta se ainda não tiver
+ */
+function ensureReplyBox(blocks) {
+  if (!Array.isArray(blocks) || blocks.length === 0) return blocks;
+  const hasReply = blocks.some(b => b.type === 'reply_box');
+  if (!hasReply) {
+    blocks.push({
+      id: 'reply_' + Date.now(),
+      type: 'reply_box',
+      label: 'Deixe suas palavras para quem escreveu',
+      placeholder: 'Escreva aqui o que sentiu ao ler esta carta...',
+      buttonText: 'Enviar Resposta'
+    });
+  }
+  return blocks;
 }
 
 /**
@@ -142,6 +167,30 @@ export function renderLetterBlocks(blocks, container) {
           ${caption}
         </figure>
       `;
+    } else if (block.type === 'reply_box') {
+      const label = block.label !== undefined ? block.label : 'Deixe suas palavras para quem escreveu';
+      const placeholder = block.placeholder !== undefined ? block.placeholder : 'Escreva aqui o que sentiu ao ler esta carta...';
+      const buttonText = block.buttonText || 'Enviar Resposta';
+      return `
+        <div class="letter-reply-container" id="replyContainer">
+          ${label ? `<label class="letter-reply-label" for="letterReplyTextarea"><span class="reply-pen-icon">✍️</span> ${escapeHtml(label)}</label>` : ''}
+          <textarea id="letterReplyTextarea" class="letter-reply-textarea" placeholder="${escapeHtml(placeholder)}" rows="5"></textarea>
+          <div class="letter-reply-footer">
+            <span class="letter-reply-hint">Suas palavras são guardadas com carinho.</span>
+            <button type="button" id="btnSendReply" class="btn-send-reply">
+              <span class="btn-send-icon">💌</span>
+              <span class="btn-send-text">${escapeHtml(buttonText)}</span>
+            </button>
+          </div>
+          <div id="replySuccessMessage" class="reply-success-message" style="display: none;">
+            <span class="reply-success-icon">✓</span>
+            <div class="reply-success-content">
+              <strong>Sua resposta foi enviada com sucesso!</strong>
+              <span>Obrigado por responder com tanto carinho. Suas palavras foram entregues.</span>
+            </div>
+          </div>
+        </div>
+      `;
     }
     return '';
   }).join('\n');
@@ -172,10 +221,11 @@ export async function loadLetterContent(sessionId) {
       if (resp.ok) {
         const data = await resp.json();
         if (Array.isArray(data) && data.length > 0) {
+          const finalData = ensureReplyBox(data);
           try {
-            localStorage.setItem(sessionKey, JSON.stringify(data));
+            localStorage.setItem(sessionKey, JSON.stringify(finalData));
           } catch(e) {}
-          return data;
+          return finalData;
         }
       }
 
@@ -184,10 +234,11 @@ export async function loadLetterContent(sessionId) {
       if (defaultResp.ok) {
         const defaultData = await defaultResp.json();
         if (Array.isArray(defaultData) && defaultData.length > 0) {
+          const finalDefault = ensureReplyBox(defaultData);
           try {
-            localStorage.setItem(defaultKey, JSON.stringify(defaultData));
+            localStorage.setItem(defaultKey, JSON.stringify(finalDefault));
           } catch(e) {}
-          return defaultData;
+          return finalDefault;
         }
       }
     } catch (e) {
@@ -195,7 +246,7 @@ export async function loadLetterContent(sessionId) {
     }
   }
 
-  return (Array.isArray(local) && local.length > 0) ? local : DEFAULT_LETTER_BLOCKS;
+  return (Array.isArray(local) && local.length > 0) ? ensureReplyBox(local) : DEFAULT_LETTER_BLOCKS;
 }
 
 /**

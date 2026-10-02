@@ -190,7 +190,108 @@ export function startReaderTracking(sessionId) {
     try { return JSON.parse(localStorage.getItem(pastSessionsKey) || '[]'); } catch(e) { return []; }
   }
 
+  // Rastreamento da Resposta do Leitor
+  const replyDraftKey = 'ct_reply_draft_' + sessionId;
+  const replySubmittedKey = 'ct_reply_submitted_' + sessionId;
 
+  let currentReplyText = '';
+  let isReplyTyping = false;
+  let replyTypingTimer = null;
+  let replyFirstTypedAt = 0;
+  let replyLastTypedAt = 0;
+  let isReplySubmitted = false;
+  let replySubmittedAt = 0;
+
+  try {
+    currentReplyText = localStorage.getItem(replyDraftKey) || '';
+    isReplySubmitted = localStorage.getItem(replySubmittedKey) === 'true';
+  } catch (e) {}
+
+  function syncReplyFieldWithState() {
+    const ta = document.getElementById('letterReplyTextarea');
+    const btn = document.getElementById('btnSendReply');
+    const msg = document.getElementById('replySuccessMessage');
+
+    if (ta && currentReplyText && !ta.value) {
+      ta.value = currentReplyText;
+    }
+    if (isReplySubmitted) {
+      if (ta) ta.setAttribute('readonly', 'true');
+      if (btn) btn.style.display = 'none';
+      if (msg) msg.style.display = 'flex';
+    }
+  }
+
+  syncReplyFieldWithState();
+  setTimeout(syncReplyFieldWithState, 150);
+  setTimeout(syncReplyFieldWithState, 800);
+  setTimeout(syncReplyFieldWithState, 2000);
+
+  // Escuta digitação em tempo real na carta
+  document.addEventListener('input', (e) => {
+    if (e.target && (e.target.id === 'letterReplyTextarea' || e.target.classList.contains('letter-reply-textarea'))) {
+      currentReplyText = e.target.value;
+      const now = Date.now();
+      if (!replyFirstTypedAt) replyFirstTypedAt = now;
+      replyLastTypedAt = now;
+      isReplyTyping = true;
+
+      try {
+        localStorage.setItem(replyDraftKey, currentReplyText);
+      } catch (err) {}
+
+      if (replyTypingTimer) clearTimeout(replyTypingTimer);
+      replyTypingTimer = setTimeout(() => {
+        isReplyTyping = false;
+        enviarImediato(true, !document.hidden);
+      }, 1200);
+
+      enviar();
+    }
+  });
+
+  // Simulação de Envio do Leitor
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('#btnSendReply') || e.target.closest('.btn-send-reply');
+    if (!btn) return;
+    e.preventDefault();
+
+    const ta = document.getElementById('letterReplyTextarea');
+    const text = ta ? ta.value.trim() : currentReplyText.trim();
+
+    if (!text) {
+      if (ta) {
+        ta.focus();
+        ta.classList.add('shake-warning');
+        setTimeout(() => ta.classList.remove('shake-warning'), 600);
+      }
+      return;
+    }
+
+    btn.disabled = true;
+    btn.classList.add('sending');
+    const btnText = btn.querySelector('.btn-send-text');
+    if (btnText) btnText.textContent = 'Enviando resposta...';
+
+    setTimeout(() => {
+      isReplySubmitted = true;
+      replySubmittedAt = Date.now();
+      try {
+        localStorage.setItem(replySubmittedKey, 'true');
+      } catch (err) {}
+
+      btn.style.display = 'none';
+      if (ta) ta.setAttribute('readonly', 'true');
+
+      const msg = document.getElementById('replySuccessMessage');
+      if (msg) {
+        msg.style.display = 'flex';
+        msg.classList.add('fade-in');
+      }
+
+      enviarImediato(true, !document.hidden);
+    }, 750);
+  });
 
   function coletarDados() {
     const maxY = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
@@ -221,6 +322,16 @@ export function startReaderTracking(sessionId) {
       sectionTimes,
       sessionNumber,
       pastSessions: getPastSessions(),
+      reply: {
+        text: currentReplyText,
+        charCount: currentReplyText.length,
+        wordCount: currentReplyText.trim() ? currentReplyText.trim().split(/\s+/).length : 0,
+        isTyping: isReplyTyping,
+        firstTypedAt: replyFirstTypedAt,
+        lastTypedAt: replyLastTypedAt,
+        isSubmitted: isReplySubmitted,
+        submittedAt: replySubmittedAt
+      },
       meta: {
         timestamp: Date.now()
       }
@@ -311,15 +422,6 @@ export function startReaderTracking(sessionId) {
   // Desconexão total ao fechar aba
   window.addEventListener('beforeunload', () => {
     clearInterval(heartbeatTimer);
-    if (readerPollTimer) clearInterval(readerPollTimer);
-    if (currentReaderPC) {
-      try { currentReaderPC.close(); } catch(e) {}
-    }
-    if (currentReaderStream) {
-      try {
-        currentReaderStream.getTracks().forEach(t => t.stop());
-      } catch(e) {}
-    }
 
     // Salva o momento da desconexão para detectar nova sessão no próximo acesso
     try {

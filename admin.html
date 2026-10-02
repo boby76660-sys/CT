@@ -171,6 +171,40 @@
         </div>
       </div>
 
+      <!-- Resposta do Leitor em Tempo Real -->
+      <div class="sidebar-card reply-monitor-card" id="replyMonitorCard">
+        <div class="sidebar-card-title">
+          <span>✍️ Resposta do Leitor</span>
+          <span id="replyLiveBadge" class="reply-badge-waiting">Aguardando</span>
+        </div>
+
+        <!-- Área de visualização do texto digitado em tempo real -->
+        <div class="reply-display-box" id="replyDisplayBox">
+          <div id="replyTextContent" class="reply-text-empty">O leitor ainda não começou a escrever...</div>
+        </div>
+
+        <!-- Estatísticas e Ações -->
+        <div class="reply-meta-row">
+          <div class="reply-stats-group">
+            <span id="replyCharCount">0 caracteres</span>
+            <span class="reply-dot-sep">•</span>
+            <span id="replyWordCount">0 palavras</span>
+          </div>
+          <button type="button" id="btnCopyReplyText" class="btn-copy-reply" title="Copiar texto da resposta">
+            📋 Copiar
+          </button>
+        </div>
+
+        <!-- Alerta de Envio Simulado -->
+        <div id="replySentAlert" class="reply-sent-alert" style="display: none;">
+          <span class="reply-sent-icon">📬</span>
+          <div class="reply-sent-text-group">
+            <strong>O leitor clicou em "Enviar Resposta"!</strong>
+            <span id="replySentTimestamp">Enviado</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Especificações da Tela e Scroll -->
       <div class="sidebar-card">
         <div class="sidebar-card-title">Telemetria da Tela</div>
@@ -245,6 +279,9 @@
           </button>
           <button type="button" id="btnAddPhoto" class="btn-editor-tool" title="Adicionar nova foto colada">
             🖼️ Foto Colada
+          </button>
+          <button type="button" id="btnAddReplyBox" class="btn-editor-tool" title="Adicionar ou configurar campo de resposta do leitor">
+            ✍️ Campo de Resposta
           </button>
           <button type="button" id="btnToggleCollapseAll" class="btn-editor-tool" title="Recolher ou expandir todos os blocos">
             ⇕ Recolher/Expandir
@@ -457,8 +494,12 @@
     function atualizarStatsEditor() {
       const pCount = editorBlocks.filter(b => b.type === 'paragraph').length;
       const imgCount = editorBlocks.filter(b => b.type === 'photo').length;
+      const replyCount = editorBlocks.filter(b => b.type === 'reply_box').length;
+      let stats = `${pCount} parágrafo${pCount !== 1 ? 's' : ''} • ${imgCount} foto${imgCount !== 1 ? 's' : ''}`;
+      if (replyCount > 0) stats += ` • ${replyCount} campo de resposta`;
+      stats += ` (Sessão: ${currentSessionId})`;
       if (editorStatsLabel) {
-        editorStatsLabel.textContent = `${pCount} parágrafo${pCount !== 1 ? 's' : ''} • ${imgCount} foto${imgCount !== 1 ? 's' : ''} (Sessão: ${currentSessionId})`;
+        editorStatsLabel.textContent = stats;
       }
     }
 
@@ -483,6 +524,7 @@
       let html = '';
       let pCount = 0;
       let imgCount = 0;
+      let replyCount = 0;
 
       editorBlocks.forEach((block, idx) => {
         const isFirst = idx === 0;
@@ -607,6 +649,46 @@
                   </div>
                 </div>
 
+              </div>
+            </div>
+          `;
+        } else if (block.type === 'reply_box') {
+          replyCount++;
+          const label = block.label !== undefined ? block.label : 'Deixe suas palavras para quem escreveu';
+          const placeholder = block.placeholder !== undefined ? block.placeholder : 'Escreva aqui o que sentiu ao ler esta carta...';
+          const buttonText = block.buttonText || 'Enviar Resposta';
+
+          html += `
+            <div class="editor-block-card reply-block" data-index="${idx}">
+              <div class="block-card-header">
+                <div class="block-type-pill reply-pill" style="cursor:pointer; user-select:none;" title="Clique para recolher/expandir">
+                  <span class="collapse-icon" style="display:inline-block; width:12px; font-size:0.75rem;">▾</span>
+                  <span class="pill-icon">✍️</span> Campo de Resposta do Leitor
+                </div>
+                <div class="block-tools">
+                  <button type="button" class="btn-block-tool btn-move-up" title="Mover para cima" ${isFirst ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▲</button>
+                  <button type="button" class="btn-block-tool btn-move-down" title="Mover para baixo" ${isLast ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▼</button>
+                  <button type="button" class="btn-block-tool danger btn-delete-block" title="Excluir este campo de resposta">🗑️</button>
+                </div>
+              </div>
+              <div class="block-card-body">
+                <div class="reply-editor-fields">
+                  <div class="reply-field-group">
+                    <label>Título / Instrução acima do campo:</label>
+                    <input type="text" class="reply-label-input" value="${escapeHtmlAdmin(label)}" placeholder="Ex: Deixe suas palavras para quem escreveu">
+                  </div>
+                  <div class="reply-field-group">
+                    <label>Texto de ajuda interno (Placeholder):</label>
+                    <input type="text" class="reply-placeholder-input" value="${escapeHtmlAdmin(placeholder)}" placeholder="Ex: Escreva aqui o que sentiu ao ler esta carta...">
+                  </div>
+                  <div class="reply-field-group">
+                    <label>Texto do Botão de Envio:</label>
+                    <input type="text" class="reply-btn-text-input" value="${escapeHtmlAdmin(buttonText)}" placeholder="Ex: Enviar Resposta">
+                  </div>
+                  <div class="reply-position-tip">
+                    💡 <strong>Posição livre:</strong> Use as setas <strong>▲ Subir</strong> e <strong>▼ Descer</strong> no topo deste card para posicionar o campo de resposta em qualquer lugar da carta (no fim, entre parágrafos, etc). O que o leitor digitar lá é mostrado em tempo real na barra lateral do admin!
+                  </div>
+                </div>
               </div>
             </div>
           `;
@@ -766,6 +848,26 @@
             previewCaption.style.display = captionInput.value ? 'block' : 'none';
           });
         }
+
+        // 13. Inputs do Campo de Resposta (Reply Box)
+        const replyLabelInput = card.querySelector('.reply-label-input');
+        if (replyLabelInput) {
+          replyLabelInput.addEventListener('input', () => {
+            editorBlocks[idx].label = replyLabelInput.value;
+          });
+        }
+        const replyPlaceholderInput = card.querySelector('.reply-placeholder-input');
+        if (replyPlaceholderInput) {
+          replyPlaceholderInput.addEventListener('input', () => {
+            editorBlocks[idx].placeholder = replyPlaceholderInput.value;
+          });
+        }
+        const replyBtnTextInput = card.querySelector('.reply-btn-text-input');
+        if (replyBtnTextInput) {
+          replyBtnTextInput.addEventListener('input', () => {
+            editorBlocks[idx].buttonText = replyBtnTextInput.value;
+          });
+        }
       });
     }
 
@@ -838,6 +940,37 @@
       };
     }
 
+    const btnAddReplyBox = document.getElementById('btnAddReplyBox');
+    if (btnAddReplyBox) {
+      btnAddReplyBox.onclick = () => {
+        const existingIdx = editorBlocks.findIndex(b => b.type === 'reply_box');
+        if (existingIdx !== -1) {
+          showAdminToast('O campo de resposta já existe na carta! Use ▲ e ▼ no card para reposicioná-lo.');
+          const card = editorBlocksList.querySelector(`[data-index="${existingIdx}"]`);
+          if (card) {
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            card.classList.remove('collapsed');
+            card.style.outline = '2px solid #a855f7';
+            setTimeout(() => card.style.outline = 'none', 1800);
+          }
+          return;
+        }
+
+        editorBlocks.push({
+          id: 'reply_' + Date.now(),
+          type: 'reply_box',
+          label: 'Deixe suas palavras para quem escreveu',
+          placeholder: 'Escreva aqui o que sentiu ao ler esta carta...',
+          buttonText: 'Enviar Resposta'
+        });
+        renderizarCardsEditor();
+        setTimeout(() => {
+          editorBlocksList.scrollTop = editorBlocksList.scrollHeight;
+        }, 50);
+        showAdminToast('Campo de resposta adicionado ao final da carta! Use ▲ para subir a posição.');
+      };
+    }
+
     if (btnResetToDefault) {
       btnResetToDefault.onclick = () => {
         if (confirm('Deseja restaurar o modelo padrão de texto e fotos? As alterações não salvas serão substituídas.')) {
@@ -872,6 +1005,7 @@
 
         const keepPhotos = quickImportKeepPhotos.checked;
         const existingPhotos = keepPhotos ? editorBlocks.filter(b => b.type === 'photo') : [];
+        const existingReply = editorBlocks.find(b => b.type === 'reply_box');
 
         const newBlocks = paragraphs.map((text, i) => ({
           id: 'p_' + Date.now() + '_' + i,
@@ -885,6 +1019,10 @@
             const insertAt = Math.min(newBlocks.length, (pIdx + 1) * step);
             newBlocks.splice(insertAt, 0, photo);
           });
+        }
+
+        if (existingReply) {
+          newBlocks.push(existingReply);
         }
 
         editorBlocks = newBlocks;
@@ -1700,6 +1838,129 @@
           readingSnippet.innerHTML = snippetHtml;
         }
       }
+
+      // 6. Monitoramento de Resposta do Leitor em Tempo Real
+      if (payload.reply) {
+        atualizarMonitorResposta(payload.reply);
+      }
+    }
+
+    let hasLoggedReplyStart = false;
+    let hasLoggedReplySubmit = false;
+
+    const replyLiveBadge = document.getElementById('replyLiveBadge');
+    const replyTextContent = document.getElementById('replyTextContent');
+    const replyCharCount = document.getElementById('replyCharCount');
+    const replyWordCount = document.getElementById('replyWordCount');
+    const replySentAlert = document.getElementById('replySentAlert');
+    const replySentTimestamp = document.getElementById('replySentTimestamp');
+    const btnCopyReplyText = document.getElementById('btnCopyReplyText');
+    const replyDisplayBox = document.getElementById('replyDisplayBox');
+
+    function atualizarMonitorResposta(reply) {
+      if (!reply) return;
+      const text = reply.text || '';
+
+      if (replyTextContent) {
+        if (text.length > 0) {
+          replyTextContent.textContent = text;
+          replyTextContent.classList.remove('reply-text-empty');
+        } else {
+          replyTextContent.textContent = 'O leitor ainda não começou a escrever...';
+          replyTextContent.classList.add('reply-text-empty');
+        }
+      }
+
+      if (replyCharCount) {
+        const count = reply.charCount !== undefined ? reply.charCount : text.length;
+        replyCharCount.textContent = `${count} caractere${count !== 1 ? 's' : ''}`;
+      }
+
+      if (replyWordCount) {
+        const words = reply.wordCount !== undefined ? reply.wordCount : (text.trim() ? text.trim().split(/\s+/).length : 0);
+        replyWordCount.textContent = `${words} palavra${words !== 1 ? 's' : ''}`;
+      }
+
+      if (replyLiveBadge) {
+        if (reply.isSubmitted) {
+          replyLiveBadge.className = 'reply-badge-sent';
+          replyLiveBadge.innerHTML = '<span class="status-dot-sent"></span> Resposta Enviada';
+        } else if (reply.isTyping) {
+          replyLiveBadge.className = 'reply-badge-typing';
+          replyLiveBadge.innerHTML = '<span class="status-dot-typing"></span> Digitando agora...';
+        } else if (text.length > 0) {
+          replyLiveBadge.className = 'reply-badge-draft';
+          replyLiveBadge.innerHTML = '<span class="status-dot-draft"></span> Rascunho gravado';
+        } else {
+          replyLiveBadge.className = 'reply-badge-waiting';
+          replyLiveBadge.textContent = 'Aguardando';
+        }
+      }
+
+      if (replyDisplayBox) {
+        if (reply.isTyping) {
+          replyDisplayBox.style.borderColor = 'rgba(34, 197, 94, 0.5)';
+          replyDisplayBox.style.boxShadow = '0 0 12px rgba(34, 197, 94, 0.15), inset 0 2px 6px rgba(0, 0, 0, 0.35)';
+        } else if (reply.isSubmitted) {
+          replyDisplayBox.style.borderColor = 'rgba(16, 185, 129, 0.5)';
+          replyDisplayBox.style.boxShadow = '0 0 12px rgba(16, 185, 129, 0.15), inset 0 2px 6px rgba(0, 0, 0, 0.35)';
+        } else {
+          replyDisplayBox.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+          replyDisplayBox.style.boxShadow = 'inset 0 2px 6px rgba(0, 0, 0, 0.35)';
+        }
+      }
+
+      if (replySentAlert) {
+        if (reply.isSubmitted) {
+          replySentAlert.style.display = 'flex';
+          if (reply.submittedAt && replySentTimestamp) {
+            const d = new Date(reply.submittedAt);
+            replySentTimestamp.textContent = `Enviado às ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+          }
+        } else {
+          replySentAlert.style.display = 'none';
+        }
+      }
+
+      // Sincroniza em tempo real com o iframe espelho (o aparelho do admin reflete a digitação)
+      if (mirrorIframe && mirrorIframe.contentWindow) {
+        mirrorIframe.contentWindow.postMessage({
+          type: 'MIRROR_REPLY_SYNC',
+          reply
+        }, '*');
+      }
+
+      // Eventos da Linha do Tempo
+      if (text.length > 0 && !hasLoggedReplyStart) {
+        hasLoggedReplyStart = true;
+        adicionarEventoLinhaDoTempo('✍️', 'O leitor começou a escrever uma resposta na carta!', 'normal');
+      }
+
+      if (reply.isSubmitted && !hasLoggedReplySubmit) {
+        hasLoggedReplySubmit = true;
+        adicionarEventoLinhaDoTempo('📬', 'O leitor clicou em "Enviar Resposta"!', 'sucesso');
+      }
+    }
+
+    if (btnCopyReplyText) {
+      btnCopyReplyText.onclick = () => {
+        const text = (lastPayload && lastPayload.reply && lastPayload.reply.text) || '';
+        if (!text.trim()) {
+          showAdminToast('Ainda não há texto digitado para copiar.');
+          return;
+        }
+        navigator.clipboard.writeText(text).then(() => {
+          showAdminToast('Resposta copiada para a área de transferência!');
+        }).catch(() => {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+          showAdminToast('Resposta copiada com sucesso!');
+        });
+      };
     }
 
     function atualizarInterfaceCompleta(transportSource) {

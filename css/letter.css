@@ -300,3 +300,218 @@ body {
     margin: 2rem auto !important;
   }
 }
+
+/* ==========================================================================
+   CAMPO DE RESPOSTA DO LEITOR (REPLY BOX)
+   ========================================================================== */
+
+.letter-reply-container {
+  margin: 3.5rem auto 1.5rem;
+  padding: 2.2rem 2.2rem 2rem;
+  background: rgba(246, 244, 239, 0.65);
+  border: 1px solid rgba(195, 185, 170, 0.55);
+  border-radius: 6px;
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.02);
+  position: relative;
+  clear: both;
+  transition: border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+}
+
+.letter-reply-container:focus-within {
+  border-color: rgba(140, 115, 85, 0.7);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.04), inset 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.letter-reply-label {
+  display: block;
+  font-family: var(--font-reading);
+  font-size: 1.28rem;
+  font-weight: 500;
+  color: var(--text-main);
+  margin-bottom: 0.85rem;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+
+.reply-pen-icon {
+  display: inline-block;
+  margin-right: 4px;
+}
+
+.letter-reply-textarea {
+  width: 100%;
+  font-family: var(--font-reading);
+  font-size: 1.18rem;
+  line-height: 1.75;
+  color: var(--text-main);
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 4px;
+  padding: 1.1rem 1.2rem;
+  resize: vertical;
+  min-height: 140px;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  outline: none;
+}
+
+.letter-reply-textarea:focus {
+  border-color: #8c7355;
+  box-shadow: 0 0 0 3px rgba(140, 115, 85, 0.16);
+}
+
+.letter-reply-textarea[readonly] {
+  background: #faf8f5;
+  color: #555047;
+  cursor: default;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.letter-reply-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1.1rem;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+}
+
+.letter-reply-hint {
+  font-family: var(--font-caption);
+  font-size: 1.25rem;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.btn-send-reply {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  background: #2b2824;
+  color: #ffffff;
+  border: none;
+  padding: 0.72rem 1.6rem;
+  border-radius: 4px;
+  font-family: var(--font-sans);
+  font-size: 0.94rem;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.10);
+  transition: background-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.btn-send-reply:hover {
+  background: #423e38;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.btn-send-reply:active {
+  transform: translateY(0);
+}
+
+.btn-send-reply.sending {
+  opacity: 0.8;
+  cursor: wait;
+}
+
+.btn-send-reply .btn-send-icon {
+  font-size: 1.05rem;
+}
+
+.reply-success-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  margin-top: 1.1rem;
+  padding: 1rem 1.2rem;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 4px;
+  color: #065f46;
+  font-family: var(--font-sans);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.reply-success-message.fade-in {
+  animation: replyFadeIn 0.4s ease-out;
+}
+
+@keyframes replyFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.reply-success-icon {
+  font-size: 1.3rem;
+  font-weight: bold;
+  color: #059669;
+  line-height: 1;
+  margin-top: 2px;
+}
+
+.reply-success-content strong {
+  display: block;
+  font-size: 0.96rem;
+  margin-bottom: 2px;
+}
+
+.reply-success-content span {
+  font-size: 0.88rem;
+  color: #047857;
+}
+
+/* Animação para quando clica em enviar sem ter digitado nada */
+.shake-warning {
+  animation: shakeWarning 0.5s ease;
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2) !important;
+}
+
+@keyframes shakeWarning {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+
+@media (max-width: 500px) {
+  .letter-reply-container {
+    padding: 1.4rem 1.1rem 1.3rem;
+    margin: 2.5rem 0 1rem;
+  }
+
+  .letter-reply-label {
+    font-size: 1.15rem;
+  }
+
+  .letter-reply-textarea {
+    font-size: 1.08rem;
+    padding: 0.85rem 0.9rem;
+    min-height: 120px;
+  }
+
+  .letter-reply-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .btn-send-reply {
+    width: 100%;
+    justify-content: center;
+    padding: 0.85rem 1.2rem;
+  }
+
+  .letter-reply-hint {
+    text-align: center;
+    font-size: 1.15rem;
+  }
+}
+
