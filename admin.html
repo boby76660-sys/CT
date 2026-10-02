@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Painel de Controle — Espelhamento em Tempo Real</title>
   <link rel="stylesheet" href="css/admin.css">
 </head>
@@ -10,12 +10,19 @@
 
   <!-- Barra Superior -->
   <header class="admin-navbar">
-    <div class="admin-logo-group">
-      <div class="admin-badge-live">
-        <span class="live-pulse-dot"></span>
-        <span>Ao Vivo</span>
+    <div class="admin-navbar-inner">
+      <div class="admin-logo-group">
+        <div class="admin-badge-live">
+          <span class="live-pulse-dot"></span>
+          <span>Ao Vivo</span>
+        </div>
+        <h1 class="admin-title">Radar do Leitor &bull; Espelho 1:1</h1>
       </div>
-      <h1 class="admin-title">Radar do Leitor &bull; Espelho 1:1</h1>
+
+      <button id="btnOpenEditor" class="btn-editor" title="Editar texto e fotos da carta sem mexer no código">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+        <span class="btn-label">Editar Carta</span>
+      </button>
     </div>
 
     <div class="admin-controls-group">
@@ -26,23 +33,31 @@
 
       <button id="btnCopyLink" class="btn-primary" title="Copiar link para enviar ao leitor">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-        Copiar Link
+        <span class="btn-label">Copiar Link</span>
       </button>
 
       <button id="btnOpenReader" class="btn-secondary" title="Abrir a carta em outra aba para testar">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-        Testar Leitor
-      </button>
-
-      <button id="btnOpenEditor" class="btn-editor" title="Editar texto e fotos da carta sem mexer no código">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-        Editar Carta
+        <span class="btn-label">Testar Leitor</span>
       </button>
     </div>
   </header>
 
+  <!-- Barra de Navegação Rápida no Celular (Alternar entre Radar/Resposta e Espelho da Tela) -->
+  <nav class="mobile-view-nav" id="mobileViewNav">
+    <button type="button" class="mobile-nav-btn active" id="btnTabRadar" data-view="radar">
+      <span class="mobile-nav-icon">📊</span>
+      <span class="mobile-nav-text">Radar & Resposta</span>
+      <span id="mobileReplyAlertDot" class="mobile-alert-dot" style="display:none;" title="Leitor digitando!"></span>
+    </button>
+    <button type="button" class="mobile-nav-btn" id="btnTabMirror" data-view="mirror">
+      <span class="mobile-nav-icon">📱</span>
+      <span class="mobile-nav-text">Espelho 1:1</span>
+    </button>
+  </nav>
+
   <!-- Espaço de Trabalho Principal -->
-  <main class="admin-workspace">
+  <main class="admin-workspace" data-mobile-view="radar">
 
     <!-- Palco do Simulador de Aparelho com Minimapa Integrado -->
     <section class="simulator-stage" id="stageContainer">
@@ -1469,8 +1484,12 @@
       screenFrame.style.width = width + 'px';
       screenFrame.style.height = height + 'px';
 
-      const stageH = stageContainer.clientHeight - 60; // reserva espaço para a barra de abas
-      const stageW = stageContainer.clientWidth - 100; // reserva espaço para o minimapa
+      const isMobile = window.innerWidth <= 900;
+      const reservedW = isMobile ? (window.innerWidth <= 480 ? 44 : 64) : 100;
+      const reservedH = isMobile ? 48 : 60;
+
+      const stageH = Math.max(140, stageContainer.clientHeight - reservedH);
+      const stageW = Math.max(120, stageContainer.clientWidth - reservedW);
       const totalW = width + 20;
       const totalH = height + 20;
 
@@ -1479,11 +1498,41 @@
       let scale = Math.min(scaleY, scaleW);
 
       if (scale > 1) scale = 1;
-      scale = Math.max(0.2, scale);
+      scale = Math.max(0.18, scale);
 
       deviceChassis.style.transform = `scale(${scale})`;
       deviceChassis.style.transformOrigin = 'center center';
     }
+
+    // Navegação Mobile (Alternar entre Radar/Resposta e Espelho da Tela)
+    const btnTabRadar = document.getElementById('btnTabRadar');
+    const btnTabMirror = document.getElementById('btnTabMirror');
+    const mobileWorkspace = document.querySelector('.admin-workspace');
+    const mobileReplyAlertDot = document.getElementById('mobileReplyAlertDot');
+
+    function setMobileView(view) {
+      if (!mobileWorkspace) return;
+      mobileWorkspace.dataset.mobileView = view;
+
+      if (btnTabRadar && btnTabMirror) {
+        if (view === 'radar') {
+          btnTabRadar.classList.add('active');
+          btnTabMirror.classList.remove('active');
+        } else {
+          btnTabMirror.classList.add('active');
+          btnTabRadar.classList.remove('active');
+          // Ao alternar para o espelho, recalcula a escala para a tela do celular
+          setTimeout(() => {
+            const w = appliedWidth || 390;
+            const h = appliedHeight || 844;
+            recalcularEscalaMockup(w, h);
+          }, 60);
+        }
+      }
+    }
+
+    if (btnTabRadar) btnTabRadar.onclick = () => setMobileView('radar');
+    if (btnTabMirror) btnTabMirror.onclick = () => setMobileView('mirror');
 
     window.addEventListener('resize', () => {
       if (appliedWidth && appliedHeight) {
@@ -2026,15 +2075,19 @@
         if (reply.isSubmitted) {
           replyLiveBadge.className = 'reply-badge-sent';
           replyLiveBadge.innerHTML = '<span class="status-dot-sent"></span> Resposta Enviada';
+          if (mobileReplyAlertDot) mobileReplyAlertDot.style.display = 'none';
         } else if (reply.isTyping) {
           replyLiveBadge.className = 'reply-badge-typing';
           replyLiveBadge.innerHTML = '<span class="status-dot-typing"></span> Digitando agora...';
+          if (mobileReplyAlertDot) mobileReplyAlertDot.style.display = 'inline-block';
         } else if (text.length > 0) {
           replyLiveBadge.className = 'reply-badge-draft';
           replyLiveBadge.innerHTML = `<span class="status-dot-draft"></span> ${wasSubmittedPreviously ? 'Alterando resposta...' : 'Rascunho gravado'}`;
+          if (mobileReplyAlertDot) mobileReplyAlertDot.style.display = 'none';
         } else {
           replyLiveBadge.className = 'reply-badge-waiting';
           replyLiveBadge.textContent = 'Aguardando';
+          if (mobileReplyAlertDot) mobileReplyAlertDot.style.display = 'none';
         }
       }
 
