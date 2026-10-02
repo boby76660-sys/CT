@@ -156,14 +156,11 @@
           <textarea id="letterReplyTextarea" class="letter-reply-textarea"
             placeholder="Escreva aqui o que sentiu ao ler esta carta..." rows="5"></textarea>
           <div class="letter-reply-footer">
-            <span class="letter-reply-hint">Suas palavras são guardadas com carinho.</span>
             <div class="reply-actions-row">
               <button type="button" id="btnEditReply" class="btn-edit-reply" disabled title="Editar resposta">
-                <span class="btn-edit-icon">✏️</span>
                 <span class="btn-edit-text">Editar</span>
               </button>
               <button type="button" id="btnSendReply" class="btn-send-reply">
-                <span class="btn-send-icon"></span>
                 <span class="btn-send-text">Enviar Resposta</span>
               </button>
             </div>
@@ -228,7 +225,7 @@
             btnSend.disabled = true;
             btnSend.classList.add('sent');
             const btnText = btnSend.querySelector('.btn-send-text');
-            if (btnText) btnText.textContent = '✓ Resposta Enviada';
+            if (btnText) btnText.textContent = 'Resposta Enviada';
           }
           if (btnEdit) btnEdit.disabled = false;
           if (msg) msg.style.display = 'flex';

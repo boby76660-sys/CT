@@ -227,7 +227,7 @@ export function startReaderTracking(sessionId) {
         btnSend.classList.add('sent');
         btnSend.classList.remove('sending');
         const btnText = btnSend.querySelector('.btn-send-text');
-        if (btnText) btnText.textContent = '✓ Resposta Enviada';
+        if (btnText) btnText.textContent = 'Resposta Enviada';
       }
       if (btnEdit) {
         btnEdit.disabled = false;
@@ -317,7 +317,7 @@ export function startReaderTracking(sessionId) {
       btnSend.classList.remove('sending');
       btnSend.classList.add('sent');
       btnSend.disabled = true;
-      if (btnText) btnText.textContent = '✓ Resposta Enviada';
+      if (btnText) btnText.textContent = 'Resposta Enviada';
 
       const btnEdit = document.getElementById('btnEditReply') || document.querySelector('.btn-edit-reply');
       if (btnEdit) {

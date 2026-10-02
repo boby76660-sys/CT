@@ -192,7 +192,7 @@ export function renderLetterBlocks(blocks, container) {
 
   const html = finalBlocks.map(block => {
     if (block.type === 'paragraph') {
-      const text = escapeHtml(block.text || '');
+      const text = escapeHtml(block.text || '').replace(/\r\n|\r|\n/g, '<br>');
       return `<p>${text}</p>`;
     } else if (block.type === 'photo') {
       const posClass = block.position || 'photo-center';
@@ -222,14 +222,11 @@ export function renderLetterBlocks(blocks, container) {
           ${label ? `<label class="letter-reply-label" for="letterReplyTextarea"><span class="reply-pen-icon">✍️</span> ${escapeHtml(label)}</label>` : ''}
           <textarea id="letterReplyTextarea" class="letter-reply-textarea" placeholder="${escapeHtml(placeholder)}" rows="5"></textarea>
           <div class="letter-reply-footer">
-            <span class="letter-reply-hint">Suas palavras são guardadas com carinho.</span>
             <div class="reply-actions-row">
               <button type="button" id="btnEditReply" class="btn-edit-reply" disabled title="Editar resposta">
-                <span class="btn-edit-icon">✏️</span>
                 <span class="btn-edit-text">Editar</span>
               </button>
               <button type="button" id="btnSendReply" class="btn-send-reply">
-                <span class="btn-send-icon">💌</span>
                 <span class="btn-send-text">${escapeHtml(buttonText)}</span>
               </button>
             </div>
@@ -284,7 +281,7 @@ export function renderLetterBlocks(blocks, container) {
       }
       if (preservedReply.btnSendText) {
         const textSpan = newBtnSend.querySelector('.btn-send-text');
-        if (textSpan) textSpan.textContent = preservedReply.btnSendText;
+        if (textSpan) textSpan.textContent = preservedReply.btnSendText.replace(/^[✓\s]+/, '');
       }
     }
 
