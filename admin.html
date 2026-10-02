@@ -1847,6 +1847,7 @@
 
     let hasLoggedReplyStart = false;
     let hasLoggedReplySubmit = false;
+    let wasSubmittedPreviously = false;
 
     const replyLiveBadge = document.getElementById('replyLiveBadge');
     const replyTextContent = document.getElementById('replyTextContent');
@@ -1890,7 +1891,7 @@
           replyLiveBadge.innerHTML = '<span class="status-dot-typing"></span> Digitando agora...';
         } else if (text.length > 0) {
           replyLiveBadge.className = 'reply-badge-draft';
-          replyLiveBadge.innerHTML = '<span class="status-dot-draft"></span> Rascunho gravado';
+          replyLiveBadge.innerHTML = `<span class="status-dot-draft"></span> ${wasSubmittedPreviously ? 'Alterando resposta...' : 'Rascunho gravado'}`;
         } else {
           replyLiveBadge.className = 'reply-badge-waiting';
           replyLiveBadge.textContent = 'Aguardando';
@@ -1922,7 +1923,7 @@
         }
       }
 
-      // Sincroniza em tempo real com o iframe espelho (o aparelho do admin reflete a digitação)
+      // Sincroniza em tempo real com o iframe espelho (o aparelho do admin reflete a digitação e os botões)
       if (mirrorIframe && mirrorIframe.contentWindow) {
         mirrorIframe.contentWindow.postMessage({
           type: 'MIRROR_REPLY_SYNC',
@@ -1936,8 +1937,16 @@
         adicionarEventoLinhaDoTempo('✍️', 'O leitor começou a escrever uma resposta na carta!', 'normal');
       }
 
+      // Se o leitor clicou em editar após ter enviado anteriormente
+      if (!reply.isSubmitted && wasSubmittedPreviously) {
+        wasSubmittedPreviously = false;
+        hasLoggedReplySubmit = false;
+        adicionarEventoLinhaDoTempo('✏️', 'O leitor clicou em "Editar" para alterar sua resposta', 'normal');
+      }
+
       if (reply.isSubmitted && !hasLoggedReplySubmit) {
         hasLoggedReplySubmit = true;
+        wasSubmittedPreviously = true;
         adicionarEventoLinhaDoTempo('📬', 'O leitor clicou em "Enviar Resposta"!', 'sucesso');
       }
     }

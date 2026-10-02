@@ -177,10 +177,16 @@ export function renderLetterBlocks(blocks, container) {
           <textarea id="letterReplyTextarea" class="letter-reply-textarea" placeholder="${escapeHtml(placeholder)}" rows="5"></textarea>
           <div class="letter-reply-footer">
             <span class="letter-reply-hint">Suas palavras são guardadas com carinho.</span>
-            <button type="button" id="btnSendReply" class="btn-send-reply">
-              <span class="btn-send-icon">💌</span>
-              <span class="btn-send-text">${escapeHtml(buttonText)}</span>
-            </button>
+            <div class="reply-actions-row">
+              <button type="button" id="btnEditReply" class="btn-edit-reply" disabled title="Editar resposta">
+                <span class="btn-edit-icon">✏️</span>
+                <span class="btn-edit-text">Editar</span>
+              </button>
+              <button type="button" id="btnSendReply" class="btn-send-reply">
+                <span class="btn-send-icon">💌</span>
+                <span class="btn-send-text">${escapeHtml(buttonText)}</span>
+              </button>
+            </div>
           </div>
           <div id="replySuccessMessage" class="reply-success-message" style="display: none;">
             <span class="reply-success-icon">✓</span>

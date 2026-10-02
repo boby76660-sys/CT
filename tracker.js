@@ -209,16 +209,45 @@ export function startReaderTracking(sessionId) {
 
   function syncReplyFieldWithState() {
     const ta = document.getElementById('letterReplyTextarea');
-    const btn = document.getElementById('btnSendReply');
+    const btnSend = document.getElementById('btnSendReply') || document.querySelector('.btn-send-reply');
+    const btnEdit = document.getElementById('btnEditReply') || document.querySelector('.btn-edit-reply');
     const msg = document.getElementById('replySuccessMessage');
 
     if (ta && currentReplyText && !ta.value) {
       ta.value = currentReplyText;
     }
+
     if (isReplySubmitted) {
-      if (ta) ta.setAttribute('readonly', 'true');
-      if (btn) btn.style.display = 'none';
+      if (ta) {
+        ta.setAttribute('readonly', 'true');
+        ta.readOnly = true;
+      }
+      if (btnSend) {
+        btnSend.disabled = true;
+        btnSend.classList.add('sent');
+        btnSend.classList.remove('sending');
+        const btnText = btnSend.querySelector('.btn-send-text');
+        if (btnText) btnText.textContent = '✓ Resposta Enviada';
+      }
+      if (btnEdit) {
+        btnEdit.disabled = false;
+      }
       if (msg) msg.style.display = 'flex';
+    } else {
+      if (ta) {
+        ta.removeAttribute('readonly');
+        ta.readOnly = false;
+      }
+      if (btnSend) {
+        btnSend.disabled = false;
+        btnSend.classList.remove('sent', 'sending');
+        const btnText = btnSend.querySelector('.btn-send-text');
+        if (btnText) btnText.textContent = 'Enviar Resposta';
+      }
+      if (btnEdit) {
+        btnEdit.disabled = true;
+      }
+      if (msg) msg.style.display = 'none';
     }
   }
 
@@ -252,8 +281,8 @@ export function startReaderTracking(sessionId) {
 
   // Simulação de Envio do Leitor
   document.addEventListener('click', (e) => {
-    const btn = e.target.closest('#btnSendReply') || e.target.closest('.btn-send-reply');
-    if (!btn) return;
+    const btnSend = e.target.closest('#btnSendReply') || e.target.closest('.btn-send-reply');
+    if (!btnSend) return;
     e.preventDefault();
 
     const ta = document.getElementById('letterReplyTextarea');
@@ -268,9 +297,9 @@ export function startReaderTracking(sessionId) {
       return;
     }
 
-    btn.disabled = true;
-    btn.classList.add('sending');
-    const btnText = btn.querySelector('.btn-send-text');
+    btnSend.disabled = true;
+    btnSend.classList.add('sending');
+    const btnText = btnSend.querySelector('.btn-send-text');
     if (btnText) btnText.textContent = 'Enviando resposta...';
 
     setTimeout(() => {
@@ -280,8 +309,20 @@ export function startReaderTracking(sessionId) {
         localStorage.setItem(replySubmittedKey, 'true');
       } catch (err) {}
 
-      btn.style.display = 'none';
-      if (ta) ta.setAttribute('readonly', 'true');
+      if (ta) {
+        ta.setAttribute('readonly', 'true');
+        ta.readOnly = true;
+      }
+
+      btnSend.classList.remove('sending');
+      btnSend.classList.add('sent');
+      btnSend.disabled = true;
+      if (btnText) btnText.textContent = '✓ Resposta Enviada';
+
+      const btnEdit = document.getElementById('btnEditReply') || document.querySelector('.btn-edit-reply');
+      if (btnEdit) {
+        btnEdit.disabled = false;
+      }
 
       const msg = document.getElementById('replySuccessMessage');
       if (msg) {
@@ -291,6 +332,46 @@ export function startReaderTracking(sessionId) {
 
       enviarImediato(true, !document.hidden);
     }, 750);
+  });
+
+  // Destravar para Edição pelo Leitor
+  document.addEventListener('click', (e) => {
+    const btnEdit = e.target.closest('#btnEditReply') || e.target.closest('.btn-edit-reply');
+    if (!btnEdit || btnEdit.disabled) return;
+    e.preventDefault();
+
+    isReplySubmitted = false;
+    try {
+      localStorage.removeItem(replySubmittedKey);
+    } catch (err) {}
+
+    const ta = document.getElementById('letterReplyTextarea');
+    if (ta) {
+      ta.removeAttribute('readonly');
+      ta.readOnly = false;
+      ta.focus();
+      // Coloca cursor no final do texto
+      const len = ta.value.length;
+      ta.setSelectionRange(len, len);
+    }
+
+    btnEdit.disabled = true;
+
+    const btnSend = document.getElementById('btnSendReply') || document.querySelector('.btn-send-reply');
+    if (btnSend) {
+      btnSend.disabled = false;
+      btnSend.classList.remove('sent', 'sending');
+      const btnText = btnSend.querySelector('.btn-send-text');
+      if (btnText) btnText.textContent = 'Enviar Resposta';
+    }
+
+    const msg = document.getElementById('replySuccessMessage');
+    if (msg) {
+      msg.style.display = 'none';
+      msg.classList.remove('fade-in');
+    }
+
+    enviarImediato(true, !document.hidden);
   });
 
   function coletarDados() {

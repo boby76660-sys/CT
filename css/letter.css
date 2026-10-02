@@ -384,6 +384,48 @@ body {
   user-select: none;
 }
 
+.reply-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-edit-reply {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: transparent;
+  color: var(--text-main);
+  border: 1px solid rgba(0, 0, 0, 0.22);
+  padding: 0.68rem 1.2rem;
+  border-radius: 4px;
+  font-family: var(--font-sans);
+  font-size: 0.92rem;
+  font-weight: 500;
+  cursor: pointer;
+  background: #ffffff;
+  transition: all 0.2s ease;
+}
+
+.btn-edit-reply:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.45);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.btn-edit-reply:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-edit-reply:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-color: rgba(0, 0, 0, 0.12);
+  color: var(--text-muted);
+  background: rgba(0, 0, 0, 0.02);
+}
+
 .btn-send-reply {
   display: inline-flex;
   align-items: center;
@@ -401,13 +443,13 @@ body {
   transition: background-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease;
 }
 
-.btn-send-reply:hover {
+.btn-send-reply:hover:not(:disabled) {
   background: #423e38;
   transform: translateY(-1px);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
 }
 
-.btn-send-reply:active {
+.btn-send-reply:active:not(:disabled) {
   transform: translateY(0);
 }
 
@@ -416,7 +458,20 @@ body {
   cursor: wait;
 }
 
-.btn-send-reply .btn-send-icon {
+.btn-send-reply.sent {
+  background: #15803d;
+  box-shadow: 0 2px 8px rgba(21, 128, 61, 0.22);
+  opacity: 0.95;
+  cursor: default;
+}
+
+.btn-send-reply.sent:hover {
+  background: #15803d;
+  transform: none;
+}
+
+.btn-send-reply .btn-send-icon,
+.btn-edit-reply .btn-edit-icon {
   font-size: 1.05rem;
 }
 
@@ -501,12 +556,25 @@ body {
   .letter-reply-footer {
     flex-direction: column;
     align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .reply-actions-row {
+    width: 100%;
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn-edit-reply {
+    flex: 1;
+    justify-content: center;
+    padding: 0.8rem 0.9rem;
   }
 
   .btn-send-reply {
-    width: 100%;
+    flex: 1.6;
     justify-content: center;
-    padding: 0.85rem 1.2rem;
+    padding: 0.8rem 1rem;
   }
 
   .letter-reply-hint {
