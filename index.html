@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>A Sinfonia do Tempo e do Espaço — Uma Carta</title>
-  <meta name="description" content="Uma reflexão atemporal sobre os caminhos, as memórias e a jornada da vida.">
+  <title>Carta</title>
+  <meta name="description" content="Leitura contínua e imersiva.">
   <link rel="stylesheet" href="css/letter.css">
 </head>
 <body>
@@ -12,27 +12,39 @@
   <div class="letter-envelope-wrapper">
     <article class="letter-paper">
 
-      <!-- Selo de Cera Clássico -->
-      <div class="letter-seal-container">
-        <div class="letter-seal">✦</div>
-      </div>
+      <!-- 
+        ========================================================================
+        GUIA: COMO ADICIONAR E CONFIGURAR SUAS FOTOS "COLADAS":
+        
+        1. ONDE COLOCAR: Basta inserir a tag <figure> entre parágrafos ou no meio do texto.
+        2. POSIÇÃO (Classes):
+           - photo-left   : Cola à esquerda (o texto flui ao lado direito da foto)
+           - photo-right  : Cola à direita (o texto flui ao lado esquerdo da foto)
+           - photo-center : Centralizada na folha (bloco independente entre parágrafos)
+        3. ÂNGULO DE INCLINAÇÃO:
+           - Configure no atributo style: style="--angle: -3deg;" ou style="--angle: 2.5deg;"
+           - Quanto maior o valor, mais inclinada a foto fica (ex: -4deg a 4deg fica super natural).
+        4. ESTILO DA FITA ADESIVA (Opcional):
+           - Padrão: 1 fita adesiva centralizada no topo
+           - tape-double : 2 fitas adesivas nos cantos superiores
+           - tape-none   : sem fita visível (como se estivesse colada com cola)
+        5. LEGENDA (Opcional):
+           - Se não quiser legenda manuscrita embaixo da foto, basta apagar a tag <figcaption>.
+        ========================================================================
+      -->
 
-      <!-- Cabeçalho -->
-      <header class="letter-header">
-        <div class="letter-meta-top">
-          <span class="letter-location">Florença &bull; Noite de Outono</span>
-          <span class="letter-date">Anno Domini MMXXVI</span>
-        </div>
-        <h1 class="letter-title">A Sinfonia do Tempo e do Espaço</h1>
-        <div class="letter-subtitle">Crônicas do Silêncio e da Memória</div>
-        <div class="letter-salutation">Ao meu caro e dileto leitor,</div>
-      </header>
-
-      <!-- Conteúdo Extenso da Carta para Testes de Scroll -->
+      <!-- Conteúdo Contínuo e Plano da Carta -->
       <div class="letter-body">
-        <p class="opening">
+
+        <p>
           Há momentos na cadência dos dias em que as horas parecem suspensas por um fio invisível de calmaria. Escrevo-lhe não pela urgência das notícias do mundo exterior, mas pela necessidade sutil de ancorar pensamentos que, de outro modo, evaporariam na bruma do esquecimento. Enquanto as sombras se alongam suavemente pelo assoalho de madeira, percebo que certas palavras só ganham vida quando encontram a paciência de quem sabe escutar.
         </p>
+
+        <!-- Exemplo 1: Foto colada à esquerda com inclinação de -2.8 graus -->
+        <figure class="taped-photo photo-left" style="--angle: -2.8deg;">
+          <img src="images/photo-1.jpg" alt="Foto colada">
+          <figcaption class="photo-caption">Fim de tarde na praia</figcaption>
+        </figure>
 
         <p>
           O silêncio que acompanha esta escrita não é vazio; é antes uma tela clara sobre a qual todas as inquietações humanas se revelam com uma nitidez quase desconcertante. Costumamos acreditar que o tempo é um rio contínuo e impassível, fluindo sempre na mesma direção com a indiferença das grandes correntes. No entanto, nas esquinas secretas da memória, descobrimos que o tempo é muito mais uma tapeçaria circular, onde o passado, o presente e o que ainda há de vir se tocam e se influenciam mutuamente.
@@ -42,45 +54,37 @@
           Lembro-me das noites de vigília em que observávamos a marcha das constelações pela abóbada escura. Cada estrela que nos enviava seu vislumbre já havia, talvez, deixado de existir há milênios, e mesmo assim sua luz persistia em nos guiar, cruzando abismos incomensuráveis apenas para encontrar nossos olhos curiosos. Não é essa, afinal, a mesma magia que habita cada frase registrada em uma página? Um pensamento nascido no recôndito de uma mente que viaja no espaço para desabrochar no peito de quem lê.
         </p>
 
-        <div class="letter-divider">❦ &nbsp; ✦ &nbsp; ❦</div>
-
-        <h2 class="letter-section-title">I. O Labirinto das Certezas Efêmeras</h2>
-
         <p>
           Vivemos perseguindo a firmeza dos monumentos e a solidez das promessas inabaláveis. Erguemos castelos de lógica na tentativa de domar a imponderabilidade do destino, como se pudéssemos traçar linhas retas num oceano revolto. Mas quanto mais avançamos, mais evidente se torna que a beleza da existência reside justamente em sua vulnerabilidade intrínseca.
         </p>
+
+        <!-- Exemplo 2: Foto colada à direita com inclinação de 3.2 graus e fita dupla nos cantos -->
+        <figure class="taped-photo photo-right tape-double" style="--angle: 3.2deg;">
+          <img src="images/photo-2.jpg" alt="Foto colada">
+          <figcaption class="photo-caption">Aquele café da tarde</figcaption>
+        </figure>
 
         <p>
           As árvores que sobrevivem às tempestades de inverno não são as mais rígidas ou austeras, mas aquelas que aceitam dobrar seus ramos sob a fúria do vento. Há uma nobreza profunda na flexibilidade do espírito. Quando nos desarmamos da vaidade de controlar cada desfecho, permitimos que a vida nos surpreenda com caminhos que nossa imaginação limitada jamais ousaria arquitetar.
         </p>
 
-        <blockquote>
-          "Não há porto seguro para quem não aprendeu a dançar com as incertezas da maré; é na travessia das águas escuras que o marinheiro descobre a verdadeira força do seu leme."
-        </blockquote>
-
         <p>
           Veja, por exemplo, o ritmo das estações. As folhas de outono não resistem à gravidade; elas se desprendem com uma elegância que parece mais um voo do que uma queda. Sabem que o repouso no solo úmido é o prelúdio silencioso do renascimento na primavera seguinte. Por que, então, relutamos tanto diante dos términos inevitáveis que pontuam nossas trajetórias? Cada adeus carrega a semente adormecida de um novo começo.
         </p>
 
-        <div class="letter-divider">✦ &nbsp; ⚜ &nbsp; ✦</div>
-
-        <h2 class="letter-section-title">II. A Geografia dos Encontros</h2>
-
         <p>
-          Costuma-se dizer que os lugares onde fomos felizes guardam fragmentos perpétuos de nossa alma. Discordo suavemente dessa máxima. Acredito que os lugares são apenas testemunhas inertes; são as pessoas com quem compartilhamos o pão, as risadas e o pranto que consagram as pedras e as janelas com significado imortal.
+          Costuma-se dizer que os lugares onde fomos felizes guardam fragmentos perpétuos de nossa alma. Acredito que os lugares são testemunhas silenciosas; são as pessoas com quem compartilhamos o pão, as risadas e o pranto que consagram as pedras e as janelas com significado imortal. O valor das coisas terrenas não repousa em sua substância, mas na ressonância que produzem em nós.
         </p>
 
-        <p>
-          Um banco de praça desprovido de afeto é apenas madeira e ferro corroídos pelo orvalho da madrugada. Porém, se ali duas almas se encontraram em confidência sincera, aquele mesmo pedaço rústico de matéria se transforma em um santuário inexpugnável, guardião de um universo inteiro que ninguém mais poderá decifrar. O valor das coisas terrenas não repousa em sua substância, mas na ressonância que produzem em nós.
-        </p>
+        <!-- Exemplo 3: Foto colada centralizada com inclinação suave de -1 grau -->
+        <figure class="taped-photo photo-center" style="--angle: -1deg;">
+          <img src="images/photo-1.jpg" alt="Foto colada">
+          <figcaption class="photo-caption">O horizonte que sempre esteve lá</figcaption>
+        </figure>
 
         <p>
-          Reflita sobre os diálogos que moldaram seu caráter. Raras vezes foram os discursos inflamados ou as teorias acadêmicas rebuscadas que lhe deram coragem nos momentos de desespero; quase invariavelmente, foi a frase despretensiosa de um companheiro leal, dita à meia-luz, enquanto o café esfriava sobre a mesa. A sabedoria mais genuína costuma sussurrar, dispensando o alarido das trombetas.
+          Reflita sobre os diálogos que moldaram seu caráter. Raras vezes foram os discursos inflamados ou as teorias rebuscadas que lhe deram coragem nos momentos de desespero; quase invariavelmente, foi a frase despretensiosa de um companheiro leal, dita à meia-luz, enquanto o café esfriava sobre a mesa. A sabedoria mais genuína costuma sussurrar, dispensando o alarido das trombetas.
         </p>
-
-        <div class="letter-divider">❦ &nbsp; ✦ &nbsp; ❦</div>
-
-        <h2 class="letter-section-title">III. Os Espelhos do Amanhã</h2>
 
         <p>
           Ao contemplarmos o horizonte que se avizinha, é natural que sintamos o peso da expectativa. O amanhã nos desafia com suas perguntas ainda não formuladas, cobrando decisões para as quais nem sempre nos sentimos preparados. Contudo, quero lembrá-lo de que ninguém caminha senão um passo de cada vez. O fardo do ano inteiro se torna intolerável se tentarmos carregá-lo num único dia de angústia.
@@ -101,21 +105,13 @@
         <p>
           Que a serenidade acompanhe seus passos nas horas claras e que a esperança seja seu escudo quando o crepúsculo trouxer o manto das dúvidas. O mundo continuará girando com sua pressa insaciável, mas você tem o poder soberano de escolher quando pausar, respirar fundo e honrar o milagre singular de estar vivo.
         </p>
-      </div>
 
-      <!-- Fechamento e Assinatura -->
-      <footer class="letter-footer">
-        <p class="letter-valediction">Com profundo afeto e admiração sincera,</p>
-        <div class="letter-signature-container">
-          <div class="letter-signature-script">Guilherme</div>
-          <div class="letter-signature-name">Seu Fiel Correspondente</div>
-        </div>
-      </footer>
+      </div>
 
     </article>
   </div>
 
-  <!-- Interações da Página -->
+  <!-- Rastreamento Silencioso de Leitura -->
   <script type="module">
     import { startReaderTracking } from './tracker.js';
 
@@ -128,7 +124,7 @@
     } else {
       document.documentElement.classList.add('mirror-mode');
       document.body.classList.add('mirror-mode');
-      document.body.style.background = '#f5eedf';
+      document.body.style.background = '#f6f4ef';
     }
   </script>
 </body>

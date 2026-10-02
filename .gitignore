@@ -1,6 +1,4 @@
 *.mp4
 *.webm
-*.png
-*.jpg
 node_modules/
 .DS_Store
