@@ -1160,7 +1160,8 @@ body {
   border-radius: 8px;
   display: flex;
   flex-direction: column;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  outline: 2px solid transparent;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, outline 0.25s ease;
 }
 
 .editor-block-card:hover {
@@ -1220,6 +1221,75 @@ body {
   background: rgba(239, 68, 68, 0.25);
   color: #fca5a5;
   border-color: rgba(239, 68, 68, 0.4);
+}
+
+.btn-block-tool.btn-insert-below {
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.25);
+  background: rgba(56, 189, 248, 0.08);
+  font-weight: 700;
+}
+
+.btn-block-tool.btn-insert-below:hover {
+  background: rgba(56, 189, 248, 0.25);
+  color: #ffffff;
+  border-color: rgba(56, 189, 248, 0.5);
+  transform: scale(1.08);
+}
+
+/* Divisor de inserção de parágrafo entre blocos */
+.insert-divider-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: -6px 0;
+  position: relative;
+  z-index: 5;
+  height: 24px;
+}
+
+.insert-divider-line::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 50%;
+  height: 1px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.12);
+  z-index: 1;
+}
+
+.insert-divider-line.top-divider {
+  margin-top: 0;
+  margin-bottom: -4px;
+}
+
+.btn-insert-between {
+  position: relative;
+  z-index: 2;
+  background: #0f172a;
+  color: #94a3b8;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  opacity: 0.55;
+  transition: all 0.2s ease;
+}
+
+.insert-divider-line:hover .btn-insert-between,
+.btn-insert-between:hover {
+  opacity: 1;
+  color: #38bdf8;
+  border-color: #38bdf8;
+  background: #0c1427;
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.3);
+  transform: scale(1.05);
 }
 
 /* Área de Texto do Parágrafo */

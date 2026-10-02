@@ -573,6 +573,37 @@
       }
     }
 
+    function insertParagraphAt(targetIndex) {
+      const newBlock = {
+        id: 'p_' + Date.now(),
+        type: 'paragraph',
+        text: ''
+      };
+      editorBlocks.splice(targetIndex, 0, newBlock);
+      renderizarCardsEditor();
+      scheduleAutoSync(150);
+
+      setTimeout(() => {
+        const newCard = editorBlocksList.querySelector(`[data-index="${targetIndex}"]`);
+        if (newCard) {
+          newCard.classList.remove('collapsed');
+          const collapseIcon = newCard.querySelector('.collapse-icon');
+          if (collapseIcon) collapseIcon.textContent = '▾';
+          newCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          const ta = newCard.querySelector('.paragraph-textarea');
+          if (ta) ta.focus();
+          newCard.style.outline = '2px solid #38bdf8';
+          newCard.style.boxShadow = '0 0 16px rgba(56, 189, 248, 0.4)';
+          setTimeout(() => {
+            newCard.style.outline = 'none';
+            newCard.style.boxShadow = 'none';
+          }, 1400);
+        }
+      }, 70);
+
+      showAdminToast(`Novo parágrafo inserido na posição #${targetIndex + 1}!`);
+    }
+
     function renderizarCardsEditor() {
       atualizarStatsEditor();
 
@@ -585,13 +616,16 @@
         `;
         const btnEmpty = document.getElementById('btnEmptyAddP');
         if (btnEmpty) btnEmpty.onclick = () => {
-          editorBlocks.push({ id: 'p_' + Date.now(), type: 'paragraph', text: '' });
-          renderizarCardsEditor();
+          insertParagraphAt(0);
         };
         return;
       }
 
-      let html = '';
+      let html = `
+        <div class="insert-divider-line top-divider">
+          <button type="button" class="btn-insert-between" data-insert-at="0" title="Inserir novo parágrafo no início da carta">➕ Inserir parágrafo no início</button>
+        </div>
+      `;
       let pCount = 0;
       let imgCount = 0;
       let replyCount = 0;
@@ -610,6 +644,7 @@
                   <span class="pill-icon">📝</span> Parágrafo #${pCount}
                 </div>
                 <div class="block-tools">
+                  <button type="button" class="btn-block-tool btn-insert-below" title="Inserir novo parágrafo abaixo deste">➕</button>
                   <button type="button" class="btn-block-tool btn-move-up" title="Mover para cima" ${isFirst ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▲</button>
                   <button type="button" class="btn-block-tool btn-move-down" title="Mover para baixo" ${isLast ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▼</button>
                   <button type="button" class="btn-block-tool danger btn-delete-block" title="Excluir este parágrafo">🗑️</button>
@@ -618,6 +653,9 @@
               <div class="block-card-body">
                 <textarea class="paragraph-textarea" placeholder="Digite seu parágrafo aqui...">${escapeHtmlAdmin(block.text || '')}</textarea>
               </div>
+            </div>
+            <div class="insert-divider-line">
+              <button type="button" class="btn-insert-between" data-insert-at="${idx + 1}" title="Inserir novo parágrafo abaixo do parágrafo #${pCount}">➕ Inserir parágrafo aqui</button>
             </div>
           `;
         } else if (block.type === 'photo') {
@@ -636,6 +674,7 @@
                   <span class="pill-icon">🖼️</span> Foto Colada #${imgCount}
                 </div>
                 <div class="block-tools">
+                  <button type="button" class="btn-block-tool btn-insert-below" title="Inserir novo parágrafo abaixo desta foto">➕</button>
                   <button type="button" class="btn-block-tool btn-move-up" title="Mover para cima" ${isFirst ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▲</button>
                   <button type="button" class="btn-block-tool btn-move-down" title="Mover para baixo" ${isLast ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▼</button>
                   <button type="button" class="btn-block-tool danger btn-delete-block" title="Excluir esta foto">🗑️</button>
@@ -721,6 +760,9 @@
 
               </div>
             </div>
+            <div class="insert-divider-line">
+              <button type="button" class="btn-insert-between" data-insert-at="${idx + 1}" title="Inserir novo parágrafo abaixo desta foto">➕ Inserir parágrafo aqui</button>
+            </div>
           `;
         } else if (block.type === 'reply_box') {
           replyCount++;
@@ -736,6 +778,7 @@
                   <span class="pill-icon">✍️</span> Campo de Resposta do Leitor
                 </div>
                 <div class="block-tools">
+                  <button type="button" class="btn-block-tool btn-insert-below" title="Inserir novo parágrafo abaixo deste campo">➕</button>
                   <button type="button" class="btn-block-tool btn-move-up" title="Mover para cima" ${isFirst ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▲</button>
                   <button type="button" class="btn-block-tool btn-move-down" title="Mover para baixo" ${isLast ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▼</button>
                   <button type="button" class="btn-block-tool danger btn-delete-block" title="Excluir este campo de resposta">🗑️</button>
@@ -761,6 +804,9 @@
                 </div>
               </div>
             </div>
+            <div class="insert-divider-line">
+              <button type="button" class="btn-insert-between" data-insert-at="${idx + 1}" title="Inserir novo parágrafo após o campo de resposta">➕ Inserir parágrafo aqui</button>
+            </div>
           `;
         }
       });
@@ -784,6 +830,15 @@
             if (collapseIcon) {
               collapseIcon.textContent = card.classList.contains('collapsed') ? '▸' : '▾';
             }
+          };
+        }
+
+        // 0.1 Inserir Novo Parágrafo Logo Abaixo Deste Bloco
+        const btnInsertBelow = card.querySelector('.btn-insert-below');
+        if (btnInsertBelow) {
+          btnInsertBelow.onclick = (e) => {
+            e.stopPropagation();
+            insertParagraphAt(idx + 1);
           };
         }
 
@@ -954,6 +1009,18 @@
           });
         }
       });
+
+      // Divisores de inserção entre blocos (+ Inserir parágrafo aqui)
+      const betweenBtns = editorBlocksList.querySelectorAll('.btn-insert-between');
+      betweenBtns.forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          const targetIdx = parseInt(btn.dataset.insertAt, 10);
+          if (!isNaN(targetIdx)) {
+            insertParagraphAt(targetIdx);
+          }
+        };
+      });
     }
 
     // Ações do Cabeçalho e Rodapé do Editor
@@ -992,18 +1059,7 @@
 
     if (btnAddParagraph) {
       btnAddParagraph.onclick = () => {
-        editorBlocks.push({
-          id: 'p_' + Date.now(),
-          type: 'paragraph',
-          text: ''
-        });
-        renderizarCardsEditor();
-        scheduleAutoSync(150);
-        setTimeout(() => {
-          editorBlocksList.scrollTop = editorBlocksList.scrollHeight;
-          const lastCard = editorBlocksList.querySelector('.editor-block-card:last-child textarea');
-          if (lastCard) lastCard.focus();
-        }, 50);
+        insertParagraphAt(editorBlocks.length);
       };
     }
 
