@@ -29,11 +29,6 @@
         Copiar Link
       </button>
 
-      <button id="btnCopyLinkMic" class="btn-secondary" style="border-color: rgba(52, 211, 153, 0.4); color: #34d399;" title="Copiar link que solicita permissão de áudio ao abrir (?mic=1)">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
-        Link c/ Áudio 🎤
-      </button>
-
       <button id="btnOpenReader" class="btn-secondary" title="Abrir a carta em outra aba para testar">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
         Testar Leitor
@@ -162,44 +157,6 @@
 
       </div>
 
-      <!-- Card de Microfone e Áudio em Tempo Real (WebRTC) -->
-      <div class="sidebar-card" id="micCard">
-        <div class="sidebar-card-title">
-          <div style="display:flex;align-items:center;gap:6px;">
-            <span>🎤 Áudio do Leitor</span>
-            <span id="micLiveBadge" class="mic-badge offline">Sem Áudio</span>
-          </div>
-          <span id="micLevelText" style="font-size:0.75rem;font-weight:700;color:var(--admin-text-muted);">0%</span>
-        </div>
-
-        <!-- Barra de Nível / VU Meter -->
-        <div class="mic-vu-track">
-          <div id="micLevelBar" class="mic-vu-bar" style="width: 0%;"></div>
-        </div>
-
-        <!-- Mini barras dinâmicas do espectro de frequência -->
-        <div id="micBars" class="mic-spectrum-container">
-          <div class="mic-bar"></div><div class="mic-bar"></div><div class="mic-bar"></div>
-          <div class="mic-bar"></div><div class="mic-bar"></div><div class="mic-bar"></div>
-          <div class="mic-bar"></div><div class="mic-bar"></div>
-        </div>
-
-        <!-- Controles de Áudio ao Vivo (Escutar / Volume) -->
-        <div class="mic-playback-controls" id="micPlaybackControls">
-          <button id="btnToggleListen" class="btn-listen" disabled title="Ouvir áudio do leitor em tempo real">
-            <span id="listenIcon">🔊</span>
-            <span id="listenBtnText">Aguardando Microfone...</span>
-          </button>
-          <div class="mic-volume-wrapper" title="Volume de reprodução">
-            <span style="font-size:0.7rem;color:var(--admin-text-muted);">Vol</span>
-            <input type="range" id="micVolumeSlider" min="0" max="100" value="80" class="mic-vol-slider">
-          </div>
-        </div>
-        
-        <div id="micStatusDesc" class="mic-status-desc">
-          Aguardando conexão de áudio do leitor.
-        </div>
-      </div>
 
       <!-- Trecho que o Leitor está visualizando -->
       <div class="sidebar-card">
@@ -263,12 +220,9 @@
 
   </main>
 
-  <!-- Elemento de áudio para reprodução ao vivo via WebRTC -->
-  <audio id="adminAudioPlayer" autoplay playsinline style="position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0.001;pointer-events:none;"></audio>
-
   <!-- Script do Painel Admin -->
   <script type="module">
-    import { startAdminListening, startAdminWebRTCAudio } from './tracker.js';
+    import { startAdminListening } from './tracker.js';
     import { firebaseConfig, isFirebaseConfigured } from './firebase-config.js';
 
     // Elementos da interface
@@ -349,30 +303,6 @@
     let hasLoggedCompletion = false;
     let lastHighlightedElement = null;
 
-    // Microfone e Áudio WebRTC em Tempo Real
-    const btnCopyLinkMic  = document.getElementById('btnCopyLinkMic');
-    const micCard         = document.getElementById('micCard');
-    const micLiveBadge    = document.getElementById('micLiveBadge');
-    const micLevelBar     = document.getElementById('micLevelBar');
-    const micLevelText    = document.getElementById('micLevelText');
-    const micBarsEl       = document.getElementById('micBars');
-    const btnToggleListen = document.getElementById('btnToggleListen');
-    const listenIcon      = document.getElementById('listenIcon');
-    const listenBtnText   = document.getElementById('listenBtnText');
-    const micVolumeSlider = document.getElementById('micVolumeSlider');
-    const micStatusDesc   = document.getElementById('micStatusDesc');
-    const adminAudioPlayer= document.getElementById('adminAudioPlayer');
-
-    let currentAdminAudioClientId = null;
-    let adminWebRTCController = null;
-    let adminAudioCtx = null;
-    let adminAnalyser = null;
-    let adminAnalyserSource = null;
-    let isWebRTCStreamActive = false;
-    let isAdminAudioListening = false;
-    let isAudioVisualizerRunning = false;
-    let lastAudioLevel = 0;
-    let audioSpikeStart = 0;
 
     // Relatórios de sessão agrupados por dispositivo
     // Estrutura: { clientId: { deviceLabel, sessions: [{ sessionNumber, ... }] } }
@@ -497,187 +427,6 @@
       }).join('');
     }
 
-    function renderizarMedidorMicrofone(audioLevel, micSpectrum) {
-      if (audioLevel === null || audioLevel === undefined) return;
-
-      lastAudioLevel = audioLevel;
-      micLevelBar.style.width = `${audioLevel}%`;
-      micLevelBar.style.background = audioLevel > 65
-        ? 'linear-gradient(90deg,#f59e0b,#ef4444)'
-        : audioLevel > 35
-          ? 'linear-gradient(90deg,#34d399,#10b981)'
-          : 'linear-gradient(90deg,#10b981,#34d399)';
-      micLevelText.textContent = `${audioLevel}%`;
-      micLevelText.style.color = audioLevel > 65 ? '#fbbf24' : '#34d399';
-
-      // Atualiza as mini barras com o espectro
-      if (micSpectrum && micSpectrum.length > 0 && micBarsEl) {
-        const bars = micBarsEl.querySelectorAll('.mic-bar');
-        bars.forEach((bar, i) => {
-          const val = micSpectrum[i % micSpectrum.length] || 0;
-          const h = Math.max(3, Math.round((val / 100) * 18));
-          bar.style.height = `${h}px`;
-          bar.style.opacity = 0.35 + (val / 100) * 0.65;
-        });
-      }
-
-      // Detecção de reação sonora sustentada (> 60% por 2.5s)
-      const now = Date.now();
-      if (audioLevel > 60) {
-        if (!audioSpikeStart) audioSpikeStart = now;
-        if (now - audioSpikeStart > 2500) {
-          adicionarEventoLinhaDoTempo('🎤', 'Reação sonora detectada durante a leitura', 'releitura');
-          audioSpikeStart = now + 20000; // cooldown de 20s
-        }
-      } else {
-        audioSpikeStart = 0;
-      }
-    }
-
-    function definirStatusMicrofoneUI(status, desc) {
-      if (!micLiveBadge) return;
-      if (status === 'live') {
-        micLiveBadge.className = 'mic-badge live';
-        micLiveBadge.textContent = 'Ao Vivo';
-        btnToggleListen.disabled = false;
-        if (isAdminAudioListening) {
-          listenIcon.textContent = '🔇';
-          listenBtnText.textContent = 'Mutar Áudio';
-          btnToggleListen.classList.add('is-listening');
-          micStatusDesc.textContent = '🔊 Reproduzindo áudio ao vivo do leitor!';
-        } else {
-          listenIcon.textContent = '🔊';
-          listenBtnText.textContent = 'Escutar Áudio ao Vivo';
-          btnToggleListen.classList.remove('is-listening');
-          micStatusDesc.textContent = desc || 'Microfone transmitindo. Clique acima para escutar.';
-        }
-      } else if (status === 'connecting') {
-        micLiveBadge.className = 'mic-badge connecting';
-        micLiveBadge.textContent = 'Microfone Ativo';
-        btnToggleListen.disabled = false;
-        if (isAdminAudioListening) {
-          listenIcon.textContent = '🔇';
-          listenBtnText.textContent = 'Mutar Áudio';
-          btnToggleListen.classList.add('is-listening');
-          micStatusDesc.textContent = '🔊 Conectando e reproduzindo áudio do leitor...';
-        } else {
-          listenIcon.textContent = '🔊';
-          listenBtnText.textContent = 'Escutar Áudio ao Vivo';
-          btnToggleListen.classList.remove('is-listening');
-          micStatusDesc.textContent = desc || 'Microfone detectado. Conectando canal P2P...';
-        }
-      } else {
-        micLiveBadge.className = 'mic-badge offline';
-        micLiveBadge.textContent = 'Sem Áudio';
-        btnToggleListen.disabled = true;
-        listenIcon.textContent = '🔊';
-        listenBtnText.textContent = 'Aguardando Microfone...';
-        btnToggleListen.classList.remove('is-listening');
-        micStatusDesc.textContent = desc || 'Microfone ainda não ativo ou sem permissão no leitor.';
-        renderizarMedidorMicrofone(0, [0,0,0,0,0,0,0,0]);
-      }
-    }
-
-    function configurarStreamRemoto(stream) {
-      isWebRTCStreamActive = true;
-      adminAudioPlayer.srcObject = stream;
-      if (isAdminAudioListening) {
-        adminAudioPlayer.muted = false;
-        adminAudioPlayer.play().catch(e => console.warn('Erro ao reproduzir áudio:', e));
-      }
-
-      try {
-        const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
-        if (!adminAudioCtx) {
-          adminAudioCtx = new AudioCtxClass();
-        }
-        if (adminAudioCtx.state === 'suspended') {
-          adminAudioCtx.resume().catch(() => {});
-        }
-        if (adminAnalyserSource) {
-          try { adminAnalyserSource.disconnect(); } catch(e) {}
-        }
-        adminAnalyserSource = adminAudioCtx.createMediaStreamSource(stream);
-        adminAnalyser = adminAudioCtx.createAnalyser();
-        adminAnalyser.fftSize = 64;
-        adminAnalyser.smoothingTimeConstant = 0.75;
-        adminAnalyserSource.connect(adminAnalyser);
-
-        if (!isAudioVisualizerRunning) {
-          isAudioVisualizerRunning = true;
-          requestAnimationFrame(loopAudioVisualizer);
-        }
-      } catch(e) {
-        console.warn('Erro ao configurar analyser de áudio remoto:', e);
-      }
-
-      definirStatusMicrofoneUI('live', isAdminAudioListening ? '🔊 Reproduzindo áudio ao vivo do leitor!' : 'Microfone transmitindo ao vivo.');
-    }
-
-    function loopAudioVisualizer() {
-      if (adminAnalyser && isWebRTCStreamActive) {
-        const freqData = new Uint8Array(adminAnalyser.frequencyBinCount);
-        adminAnalyser.getByteFrequencyData(freqData);
-        const avg = freqData.reduce((a, b) => a + b, 0) / freqData.length;
-        const levelPct = Math.min(100, Math.round((avg / 255) * 100));
-        const spectrum = Array.from(freqData.slice(0, 8)).map(v => Math.round((v / 255) * 100));
-        renderizarMedidorMicrofone(levelPct, spectrum);
-      }
-      requestAnimationFrame(loopAudioVisualizer);
-    }
-
-    function atualizarConexaoAudioAdmin(cId, cData) {
-      if (!cId) {
-        if (adminWebRTCController) {
-          adminWebRTCController.close();
-          adminWebRTCController = null;
-        }
-        currentAdminAudioClientId = null;
-        isWebRTCStreamActive = false;
-        definirStatusMicrofoneUI('offline', 'Aguardando cliente leitor...');
-        return;
-      }
-
-      const client = clients[cId] || cData;
-      const clientHasMic = client && (client.hasMic === true || (client.audioLevel !== null && client.audioLevel !== undefined));
-
-      if (cId !== currentAdminAudioClientId) {
-        if (adminWebRTCController) {
-          adminWebRTCController.close();
-          adminWebRTCController = null;
-        }
-        currentAdminAudioClientId = cId;
-        isWebRTCStreamActive = false;
-
-        definirStatusMicrofoneUI(clientHasMic ? 'connecting' : 'offline', clientHasMic ? 'Microfone detectado! Conectando áudio ao vivo...' : 'Microfone indisponível no leitor.');
-
-        adminWebRTCController = startAdminWebRTCAudio(
-          currentSessionId,
-          cId,
-          (remoteStream) => {
-            configurarStreamRemoto(remoteStream);
-          },
-          (status) => {
-            if (status === 'live') {
-              definirStatusMicrofoneUI('live', 'Microfone transmitindo ao vivo.');
-            } else if (status === 'connecting') {
-              definirStatusMicrofoneUI('connecting', 'Estabelecendo conexão WebRTC...');
-            } else if (status === 'offline' || status === 'disconnected') {
-              if (!isWebRTCStreamActive) {
-                const latestClient = clients[cId];
-                if (latestClient && latestClient.hasMic) {
-                  definirStatusMicrofoneUI('connecting', 'Microfone detectado, aguardando conexão...');
-                } else {
-                  definirStatusMicrofoneUI('offline', 'Microfone indisponível no leitor.');
-                }
-              }
-            }
-          }
-        );
-      } else if (!isWebRTCStreamActive && clientHasMic) {
-        definirStatusMicrofoneUI('connecting', 'Microfone ativo no leitor! Conectando áudio...');
-      }
-    }
 
     function adicionarEventoLinhaDoTempo(icone, texto, tipo = 'normal') {
       const now = Date.now();
@@ -790,51 +539,10 @@
       });
     });
 
-    // Copiar Link com Áudio (?mic=1)
-    btnCopyLinkMic.addEventListener('click', () => {
-      const url = new URL(window.location.origin + '/carta');
-      url.searchParams.set('session', currentSessionId);
-      url.searchParams.set('mic', '1');
-      navigator.clipboard.writeText(url.href).then(() => {
-        const originalText = btnCopyLinkMic.innerHTML;
-        btnCopyLinkMic.innerHTML = '✓ Link c/ Áudio Copiado!';
-        setTimeout(() => { btnCopyLinkMic.innerHTML = originalText; }, 2000);
-      });
-    });
-
-    // Toggle Ouvir / Mutar áudio ao vivo
-    btnToggleListen.addEventListener('click', () => {
-      isAdminAudioListening = !isAdminAudioListening;
-      adminAudioPlayer.muted = !isAdminAudioListening;
-
-      if (isAdminAudioListening) {
-        if (adminAudioPlayer.srcObject) {
-          adminAudioPlayer.play().catch(e => console.warn('Erro ao reproduzir áudio:', e));
-        }
-        if (adminAudioCtx && adminAudioCtx.state === 'suspended') {
-          adminAudioCtx.resume().catch(() => {});
-        }
-        definirStatusMicrofoneUI(isWebRTCStreamActive ? 'live' : 'connecting', '🔊 Reproduzindo áudio ao vivo do leitor!');
-      } else {
-        adminAudioPlayer.pause();
-        definirStatusMicrofoneUI(isWebRTCStreamActive ? 'live' : 'connecting', 'Áudio mutado no painel.');
-      }
-    });
-
-    // Controle de Volume
-    micVolumeSlider.addEventListener('input', () => {
-      adminAudioPlayer.volume = Number(micVolumeSlider.value) / 100;
-    });
-
-    // Inicializa player de áudio mutado e com 80% de volume
-    adminAudioPlayer.muted = true;
-    adminAudioPlayer.volume = 0.8;
-
-    // Abrir Leitor em Nova Aba para teste simultâneo (com ?mic=1 para facilidade nos testes)
+    // Abrir Leitor em Nova Aba para teste simultâneo
     btnOpenReader.addEventListener('click', () => {
       const url = new URL(window.location.origin + '/index.html');
       url.searchParams.set('session', currentSessionId);
-      url.searchParams.set('mic', '1');
       window.open(url.href, '_blank');
     });
 
@@ -1286,16 +994,6 @@
       progressPercentLabel.textContent = `${pct}%`;
       progressBarFill.style.width = `${pct}%`;
 
-      // 2b. Microfone em tempo real
-      if (payload.hasMic) {
-        if (!isWebRTCStreamActive) {
-          definirStatusMicrofoneUI('connecting', 'Microfone ativo no leitor! Conectando áudio...');
-        }
-      }
-      if (!isWebRTCStreamActive && payload.audioLevel !== null && payload.audioLevel !== undefined) {
-        renderizarMedidorMicrofone(payload.audioLevel, payload.micSpectrum);
-      }
-      atualizarConexaoAudioAdmin(payload.clientId, payload);
 
       // Detecção de Conclusão da Leitura
       if (pct >= 98 && !hasLoggedCompletion) {
@@ -1402,7 +1100,6 @@
       }
 
       processarAtualizacaoLeitor(focused, transportSource);
-      atualizarConexaoAudioAdmin(focused.clientId, focused);
     }
 
     // Inicialização do ouvinte
