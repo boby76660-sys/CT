@@ -248,12 +248,68 @@
 
     if (!isMirrorMode) {
       startReaderTracking(sessionId);
+
+      // Proteção de Conteúdo: Bloqueio de seleção, cópia e proteção anti-print no celular
+      const isInsideReply = (target) => {
+        return target && (
+          target.id === 'letterReplyTextarea' ||
+          (target.closest && target.closest('#replyContainer')) ||
+          (target.classList && target.classList.contains('letter-reply-textarea'))
+        );
+      };
+
+      // 1. Bloqueia eventos de cópia, recorte e seleção fora do campo de resposta
+      ['copy', 'cut', 'selectstart', 'contextmenu', 'dragstart'].forEach(evt => {
+        document.addEventListener(evt, (e) => {
+          if (!isInsideReply(e.target)) {
+            e.preventDefault();
+          }
+        }, { passive: false });
+      });
+
+      // 2. Bloqueia atalhos de teclado (Ctrl+C, Ctrl+A, Ctrl+P, PrintScreen)
+      document.addEventListener('keydown', (e) => {
+        if (isInsideReply(e.target)) return;
+        const key = (e.key || '').toLowerCase();
+        if ((e.ctrlKey || e.metaKey) && ['c', 'a', 'u', 's', 'p'].includes(key)) {
+          e.preventDefault();
+        }
+        if (e.key === 'PrintScreen' || e.keyCode === 44) {
+          e.preventDefault();
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText('');
+            }
+          } catch (err) {}
+        }
+      });
+
+      // 3. Proteção no celular: oculta/borra o conteúdo ao abrir multitarefa / alternador de apps
+      const applyBlurProtection = () => {
+        document.body.classList.add('blur-protected');
+      };
+      const removeBlurProtection = () => {
+        document.body.classList.remove('blur-protected');
+      };
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          applyBlurProtection();
+        } else {
+          removeBlurProtection();
+        }
+      });
+
+      window.addEventListener('blur', applyBlurProtection);
+      window.addEventListener('focus', removeBlurProtection);
+
     } else {
       document.documentElement.classList.add('mirror-mode');
       document.body.classList.add('mirror-mode');
       document.body.style.background = '#f6f4ef';
     }
   </script>
+  <div id="screenProtectionShield" class="screen-protection-shield"></div>
 </body>
 
 </html>

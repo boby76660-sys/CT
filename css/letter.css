@@ -575,3 +575,67 @@ body {
   }
 }
 
+/* ==========================================================================
+   PROTEÇÃO DE CONTEÚDO: ANTI-SELEÇÃO, ANTI-CÓPIA E ANTI-PRINT
+   ========================================================================== */
+
+/* Bloqueio de seleção de texto e toque prolongado na carta */
+body:not(.mirror-mode) .letter-paper,
+body:not(.mirror-mode) .letter-body,
+body:not(.mirror-mode) .letter-body p,
+body:not(.mirror-mode) .taped-photo,
+body:not(.mirror-mode) .photo-caption {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important; /* Desativa lupa e menu 'Copiar' no iOS Safari */
+}
+
+/* Mantém seleção e digitação livres no campo de resposta */
+.letter-reply-container,
+.letter-reply-container textarea,
+.letter-reply-container input,
+.letter-reply-textarea {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default !important;
+}
+
+/* Escudo de proteção ao perder foco / multitarefa no celular (anti-print de switcher) */
+.screen-protection-shield {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(246, 244, 239, 0.98);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  z-index: 99999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+body.blur-protected .letter-paper {
+  filter: blur(25px) !important;
+  opacity: 0.15 !important;
+  transition: filter 0.08s ease, opacity 0.08s ease;
+}
+
+body.blur-protected .screen-protection-shield {
+  opacity: 1 !important;
+  pointer-events: all !important;
+}
+
+/* Bloqueio de impressão e exportação em PDF */
+@media print {
+  body {
+    display: none !important;
+  }
+}
+
+
