@@ -1896,5 +1896,47 @@ body {
   line-height: 1.5;
 }
 
+/* Status de Sincronização em Tempo Real no Editor */
+.editor-sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  transition: all 0.2s ease;
+}
+
+.editor-sync-status.saving {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.editor-sync-status.error {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.editor-sync-status .sync-dot {
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.editor-sync-status.saving .sync-dot {
+  animation: pulseSyncDot 0.8s infinite alternate;
+}
+
+@keyframes pulseSyncDot {
+  from { opacity: 0.3; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1.15); }
+}
+
+
 
 

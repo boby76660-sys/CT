@@ -139,12 +139,58 @@ function ensureReplyBox(blocks) {
 }
 
 /**
+ * Converte dados de blocos do Firebase para Array seguro (trata tanto arrays quanto objetos indexados)
+ */
+export function normalizeBlocks(data) {
+  if (!data) return null;
+  if (Array.isArray(data)) return data;
+  if (typeof data === 'object') {
+    const keys = Object.keys(data).filter(k => !isNaN(parseInt(k, 10))).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+    if (keys.length > 0) {
+      return keys.map(k => data[k]);
+    }
+  }
+  return null;
+}
+
+/**
  * Renderiza os blocos da carta no elemento DOM fornecido
+ * Preserva o texto digitado pelo leitor no campo de resposta, seleção do cursor e status de envio
  */
 export function renderLetterBlocks(blocks, container) {
-  if (!container || !Array.isArray(blocks)) return;
+  if (!container || !Array.isArray(blocks) || blocks.length === 0) return;
 
-  const html = blocks.map(block => {
+  const finalBlocks = ensureReplyBox(blocks);
+  const newSignature = JSON.stringify(finalBlocks);
+
+  // Se o conteúdo da carta for estritamente o mesmo já renderizado, evita refazer o DOM
+  if (container._renderedSignature === newSignature) {
+    return;
+  }
+
+  // 1. Preserva o estado do campo de resposta digitado pelo leitor
+  const existingTa = container.querySelector('#letterReplyTextarea');
+  const existingBtnSend = container.querySelector('#btnSendReply');
+  const existingBtnEdit = container.querySelector('#btnEditReply');
+  const existingMsgSuccess = container.querySelector('#replySuccessMessage');
+
+  let preservedReply = null;
+  if (existingTa) {
+    preservedReply = {
+      value: existingTa.value,
+      isReadOnly: existingTa.readOnly || existingTa.hasAttribute('readonly'),
+      selectionStart: existingTa.selectionStart,
+      selectionEnd: existingTa.selectionEnd,
+      hasFocus: document.activeElement === existingTa,
+      isSendDisabled: existingBtnSend ? existingBtnSend.disabled : false,
+      isSentClass: existingBtnSend ? existingBtnSend.classList.contains('sent') : false,
+      btnSendText: existingBtnSend ? (existingBtnSend.querySelector('.btn-send-text')?.textContent || '') : '',
+      isEditDisabled: existingBtnEdit ? existingBtnEdit.disabled : true,
+      isSuccessVisible: existingMsgSuccess ? (existingMsgSuccess.style.display !== 'none') : false
+    };
+  }
+
+  const html = finalBlocks.map(block => {
     if (block.type === 'paragraph') {
       const text = escapeHtml(block.text || '');
       return `<p>${text}</p>`;
@@ -202,6 +248,59 @@ export function renderLetterBlocks(blocks, container) {
   }).join('\n');
 
   container.innerHTML = html;
+  container._renderedSignature = newSignature;
+
+  // 2. Restaura estado do campo de resposta
+  const newTa = container.querySelector('#letterReplyTextarea');
+  const newBtnSend = container.querySelector('#btnSendReply');
+  const newBtnEdit = container.querySelector('#btnEditReply');
+  const newMsgSuccess = container.querySelector('#replySuccessMessage');
+
+  if (preservedReply) {
+    if (newTa) {
+      if (preservedReply.value !== undefined) {
+        newTa.value = preservedReply.value;
+      }
+      if (preservedReply.isReadOnly) {
+        newTa.setAttribute('readonly', 'true');
+        newTa.readOnly = true;
+      }
+      if (preservedReply.hasFocus) {
+        try {
+          newTa.focus();
+          if (preservedReply.selectionStart !== null && preservedReply.selectionEnd !== null) {
+            newTa.setSelectionRange(preservedReply.selectionStart, preservedReply.selectionEnd);
+          }
+        } catch (e) {}
+      }
+    }
+
+    if (newBtnSend) {
+      if (preservedReply.isSentClass) {
+        newBtnSend.classList.add('sent');
+        newBtnSend.disabled = true;
+      } else if (preservedReply.isSendDisabled) {
+        newBtnSend.disabled = true;
+      }
+      if (preservedReply.btnSendText) {
+        const textSpan = newBtnSend.querySelector('.btn-send-text');
+        if (textSpan) textSpan.textContent = preservedReply.btnSendText;
+      }
+    }
+
+    if (newBtnEdit && preservedReply.isEditDisabled !== undefined) {
+      newBtnEdit.disabled = preservedReply.isEditDisabled;
+    }
+
+    if (newMsgSuccess && preservedReply.isSuccessVisible) {
+      newMsgSuccess.style.display = 'flex';
+    }
+  }
+
+  // Notifica o window de que novos blocos foram renderizados (para recalibrar seções se necessário)
+  try {
+    window.dispatchEvent(new CustomEvent('letter_blocks_rendered', { detail: { blocks: finalBlocks } }));
+  } catch (e) {}
 }
 
 /**
@@ -223,11 +322,12 @@ export async function loadLetterContent(sessionId) {
   if (isFirebaseConfigured()) {
     const dbUrl = firebaseConfig.databaseURL.replace(/\/$/, '');
     try {
-      const resp = await fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/letter_content.json`);
+      const resp = await fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/letter_content.json?t=${Date.now()}`);
       if (resp.ok) {
         const data = await resp.json();
-        if (Array.isArray(data) && data.length > 0) {
-          const finalData = ensureReplyBox(data);
+        const norm = normalizeBlocks(data);
+        if (norm && norm.length > 0) {
+          const finalData = ensureReplyBox(norm);
           try {
             localStorage.setItem(sessionKey, JSON.stringify(finalData));
           } catch(e) {}
@@ -236,11 +336,12 @@ export async function loadLetterContent(sessionId) {
       }
 
       // Se a sessão específica não tem conteúdo personalizado, tenta o default
-      const defaultResp = await fetch(`${dbUrl}/letter_content_default.json`);
+      const defaultResp = await fetch(`${dbUrl}/letter_content_default.json?t=${Date.now()}`);
       if (defaultResp.ok) {
         const defaultData = await defaultResp.json();
-        if (Array.isArray(defaultData) && defaultData.length > 0) {
-          const finalDefault = ensureReplyBox(defaultData);
+        const normDef = normalizeBlocks(defaultData);
+        if (normDef && normDef.length > 0) {
+          const finalDefault = ensureReplyBox(normDef);
           try {
             localStorage.setItem(defaultKey, JSON.stringify(finalDefault));
           } catch(e) {}
@@ -253,6 +354,177 @@ export async function loadLetterContent(sessionId) {
   }
 
   return (Array.isArray(local) && local.length > 0) ? ensureReplyBox(local) : DEFAULT_LETTER_BLOCKS;
+}
+
+/**
+ * Inicia a escuta em tempo real do conteúdo da carta:
+ * 1. Firebase Realtime Database SSE (EventSource) para atualizações instantâneas cross-device
+ * 2. BroadcastChannel para sincronização instantânea entre abas no mesmo navegador
+ * 3. Evento 'storage' do window para suporte a múltiplas abas locais
+ * 4. Polling inteligente e reconexão automática ao acordar o celular (visibilitychange / focus)
+ *
+ * @param {string} sessionId
+ * @param {function(blocks: Array): void} onUpdate
+ * @returns {function(): void} cleanup function
+ */
+export function startLetterContentListening(sessionId, onUpdate) {
+  if (typeof onUpdate !== 'function') return () => {};
+
+  let isStopped = false;
+  let currentJson = '';
+  let eventSourceSession = null;
+  let pollTimer = null;
+
+  function handleNewBlocks(blocks, source) {
+    if (isStopped || !Array.isArray(blocks) || blocks.length === 0) return;
+    const finalBlocks = ensureReplyBox(blocks);
+    const jsonStr = JSON.stringify(finalBlocks);
+    if (jsonStr === currentJson) return;
+
+    currentJson = jsonStr;
+    const sessionKey = 'ct_letter_content_' + sessionId;
+    try {
+      localStorage.setItem(sessionKey, jsonStr);
+    } catch (e) {}
+
+    onUpdate(finalBlocks);
+  }
+
+  // 1. BroadcastChannel (mesmo navegador, tabs diferentes)
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      const bc = new BroadcastChannel('carta_telemetry_channel');
+      bc.onmessage = (e) => {
+        if (e.data && e.data.type === 'LETTER_CONTENT_UPDATED' && Array.isArray(e.data.blocks)) {
+          if (!e.data.sessionId || e.data.sessionId === sessionId) {
+            handleNewBlocks(e.data.blocks, 'BroadcastChannel');
+          }
+        }
+      };
+    }
+  } catch (e) {}
+
+  // 2. Storage event (fallback para abas no mesmo navegador)
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'ct_letter_content_' + sessionId || e.key === 'ct_letter_content_default') {
+      if (e.newValue) {
+        try {
+          const blocks = JSON.parse(e.newValue);
+          handleNewBlocks(blocks, 'StorageEvent');
+        } catch (err) {}
+      }
+    }
+  });
+
+  // 3. Firebase Realtime Database SSE (cross-device: PC -> Celular)
+  if (isFirebaseConfigured()) {
+    const dbUrl = firebaseConfig.databaseURL.replace(/\/$/, '');
+    const sseUrl = `${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/letter_content.json`;
+
+    function connectSSE() {
+      if (isStopped) return;
+      if (eventSourceSession) {
+        try { eventSourceSession.close(); } catch (e) {}
+        eventSourceSession = null;
+      }
+
+      try {
+        eventSourceSession = new EventSource(sseUrl);
+
+        eventSourceSession.addEventListener('put', (e) => {
+          try {
+            const parsed = JSON.parse(e.data);
+            if (!parsed) return;
+            let blocksData = null;
+            if (parsed.path === '/' || parsed.path === '') {
+              blocksData = parsed.data;
+            }
+            if (blocksData) {
+              const blocks = normalizeBlocks(blocksData);
+              if (blocks && blocks.length > 0) {
+                handleNewBlocks(blocks, 'Firebase SSE');
+              }
+            } else if (parsed.path === '/' && parsed.data === null) {
+              checkFirebaseDefaultDirectly();
+            }
+          } catch (err) {
+            console.warn('Erro ao processar SSE da carta:', err);
+          }
+        });
+
+        eventSourceSession.onerror = () => {
+          // EventSource tenta reconectar nativamente
+        };
+      } catch (e) {
+        console.warn('Erro ao inicializar EventSource da carta:', e);
+      }
+    }
+
+    connectSSE();
+
+    // 4. Verificação periódica e reconexão (resiliência para celular / lock screen)
+    async function checkFirebaseDirectly() {
+      if (isStopped || document.hidden) return;
+      try {
+        const resp = await fetch(`${dbUrl}/sessoes/${encodeURIComponent(sessionId)}/letter_content.json?t=${Date.now()}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          const blocks = normalizeBlocks(data);
+          if (blocks && blocks.length > 0) {
+            handleNewBlocks(blocks, 'DirectPollSession');
+            return;
+          }
+        }
+        await checkFirebaseDefaultDirectly();
+      } catch (e) {}
+    }
+
+    async function checkFirebaseDefaultDirectly() {
+      if (isStopped) return;
+      try {
+        const resp = await fetch(`${dbUrl}/letter_content_default.json?t=${Date.now()}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          const blocks = normalizeBlocks(data);
+          if (blocks && blocks.length > 0) {
+            handleNewBlocks(blocks, 'DirectPollDefault');
+          }
+        }
+      } catch (e) {}
+    }
+
+    // Polling a cada 3.5 segundos quando a tela estiver visível
+    pollTimer = setInterval(checkFirebaseDirectly, 3500);
+
+    // Quando o leitor reabre o navegador ou desbloqueia o celular
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        checkFirebaseDirectly();
+        if (!eventSourceSession || eventSourceSession.readyState === EventSource.CLOSED) {
+          connectSSE();
+        }
+      }
+    });
+
+    window.addEventListener('focus', () => {
+      checkFirebaseDirectly();
+      if (!eventSourceSession || eventSourceSession.readyState === EventSource.CLOSED) {
+        connectSSE();
+      }
+    });
+  }
+
+  return function stop() {
+    isStopped = true;
+    if (eventSourceSession) {
+      try { eventSourceSession.close(); } catch (e) {}
+      eventSourceSession = null;
+    }
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  };
 }
 
 /**

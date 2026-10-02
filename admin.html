@@ -266,9 +266,14 @@
       <!-- Cabeçalho do Editor -->
       <div class="editor-modal-header">
         <div class="editor-title-group">
-          <div class="editor-badge">Modo Edição</div>
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <div class="editor-badge">Modo Edição</div>
+            <div id="editorLiveSyncStatus" class="editor-sync-status">
+              <span class="sync-dot">●</span> Sincronizado em tempo real
+            </div>
+          </div>
           <h2 class="editor-title">Editor de Conteúdo da Carta</h2>
-          <span class="editor-subtitle">Edite o texto e as fotos coladas (ângulos, posições e fitas) em tempo real</span>
+          <span class="editor-subtitle">Edite o texto e as fotos coladas (ângulos, posições e fitas) — atualizado ao vivo para o leitor</span>
         </div>
         <div class="editor-header-actions">
           <button type="button" id="btnQuickImportText" class="btn-editor-tool" title="Colar texto completo e transformar em parágrafos">
@@ -471,10 +476,70 @@
       }, 3500);
     }
 
+    let autoSyncTimer = null;
+    let isSavingLetter = false;
+
+    function updateSyncStatus(status) {
+      const el = document.getElementById('editorLiveSyncStatus');
+      if (!el) return;
+      if (status === 'saving') {
+        el.innerHTML = '<span class="sync-dot">●</span> Sincronizando com o leitor...';
+        el.className = 'editor-sync-status saving';
+      } else if (status === 'saved') {
+        el.innerHTML = '<span class="sync-dot">●</span> Sincronizado em tempo real';
+        el.className = 'editor-sync-status';
+      } else if (status === 'error') {
+        el.innerHTML = '<span class="sync-dot">●</span> Falha ao sincronizar';
+        el.className = 'editor-sync-status error';
+      }
+    }
+
+    async function executarSincronizacaoCarta(showToast = false) {
+      if (isSavingLetter) return false;
+      isSavingLetter = true;
+      updateSyncStatus('saving');
+
+      try {
+        const ok = await saveLetterContent(currentSessionId, editorBlocks);
+        if (ok) {
+          updateSyncStatus('saved');
+          if (showToast) {
+            showAdminToast('Carta salva e atualizada com sucesso!');
+          }
+          // Atualiza espelho iframe em tempo real
+          if (mirrorIframe && mirrorIframe.contentWindow) {
+            mirrorIframe.contentWindow.postMessage({
+              type: 'LETTER_CONTENT_UPDATED',
+              blocks: editorBlocks
+            }, '*');
+          }
+          return true;
+        } else {
+          updateSyncStatus('error');
+          return false;
+        }
+      } catch (err) {
+        console.warn('Erro ao sincronizar carta:', err);
+        updateSyncStatus('error');
+        return false;
+      } finally {
+        isSavingLetter = false;
+      }
+    }
+
+    function scheduleAutoSync(delay = 1000) {
+      updateSyncStatus('saving');
+      if (autoSyncTimer) clearTimeout(autoSyncTimer);
+      autoSyncTimer = setTimeout(() => {
+        executarSincronizacaoCarta(false);
+      }, delay);
+    }
+
     async function abrirEditor() {
       letterEditorModal.style.display = 'flex';
       quickImportPanel.style.display = 'none';
       editorBlocksList.innerHTML = '<div style="color:var(--admin-text-muted); text-align:center; padding:40px;">Carregando conteúdo da carta...</div>';
+      updateSyncStatus('saved');
 
       try {
         const blocks = await loadLetterContent(currentSessionId);
@@ -487,6 +552,11 @@
     }
 
     function fecharEditor() {
+      if (autoSyncTimer) {
+        clearTimeout(autoSyncTimer);
+        autoSyncTimer = null;
+        executarSincronizacaoCarta(false);
+      }
       letterEditorModal.style.display = 'none';
       quickImportPanel.style.display = 'none';
     }
@@ -722,6 +792,7 @@
         if (textarea) {
           textarea.addEventListener('input', () => {
             editorBlocks[idx].text = textarea.value;
+            scheduleAutoSync(1000);
           });
         }
 
@@ -731,6 +802,7 @@
           btnUp.onclick = () => {
             [editorBlocks[idx - 1], editorBlocks[idx]] = [editorBlocks[idx], editorBlocks[idx - 1]];
             renderizarCardsEditor();
+            scheduleAutoSync(150);
           };
         }
 
@@ -740,6 +812,7 @@
           btnDown.onclick = () => {
             [editorBlocks[idx], editorBlocks[idx + 1]] = [editorBlocks[idx + 1], editorBlocks[idx]];
             renderizarCardsEditor();
+            scheduleAutoSync(150);
           };
         }
 
@@ -749,6 +822,7 @@
           btnDel.onclick = () => {
             editorBlocks.splice(idx, 1);
             renderizarCardsEditor();
+            scheduleAutoSync(150);
           };
         }
 
@@ -762,6 +836,7 @@
               const dataUrl = await compressImageFile(file, 1200, 0.82);
               editorBlocks[idx].src = dataUrl;
               renderizarCardsEditor();
+              scheduleAutoSync(250);
             } catch (err) {
               alert(err.message || 'Erro ao carregar imagem.');
             }
@@ -775,6 +850,7 @@
           srcInput.addEventListener('input', () => {
             editorBlocks[idx].src = srcInput.value;
             previewImg.src = srcInput.value;
+            scheduleAutoSync(600);
           });
         }
 
@@ -784,6 +860,7 @@
           pBtn.onclick = () => {
             editorBlocks[idx].src = pBtn.dataset.src;
             renderizarCardsEditor();
+            scheduleAutoSync(150);
           };
         });
 
@@ -794,6 +871,7 @@
             editorBlocks[idx].position = pBtn.dataset.pos;
             posBtns.forEach(b => b.classList.remove('active'));
             pBtn.classList.add('active');
+            scheduleAutoSync(150);
           };
         });
 
@@ -807,6 +885,7 @@
             editorBlocks[idx].angle = val;
             angleDisplay.textContent = `${val > 0 ? '+' : ''}${val}°`;
             previewEl.style.transform = `rotate(${val}deg)`;
+            scheduleAutoSync(400);
           });
         }
 
@@ -819,6 +898,7 @@
             if (angleSlider) angleSlider.value = val;
             if (angleDisplay) angleDisplay.textContent = `${val > 0 ? '+' : ''}${val}°`;
             if (previewEl) previewEl.style.transform = `rotate(${val}deg)`;
+            scheduleAutoSync(150);
           };
         });
 
@@ -834,6 +914,7 @@
 
               previewEl.classList.remove('tape-top', 'tape-double', 'tape-none');
               previewEl.classList.add(tapeVal);
+              scheduleAutoSync(150);
             };
           });
         }
@@ -846,6 +927,7 @@
             editorBlocks[idx].caption = captionInput.value;
             previewCaption.textContent = captionInput.value;
             previewCaption.style.display = captionInput.value ? 'block' : 'none';
+            scheduleAutoSync(800);
           });
         }
 
@@ -854,18 +936,21 @@
         if (replyLabelInput) {
           replyLabelInput.addEventListener('input', () => {
             editorBlocks[idx].label = replyLabelInput.value;
+            scheduleAutoSync(800);
           });
         }
         const replyPlaceholderInput = card.querySelector('.reply-placeholder-input');
         if (replyPlaceholderInput) {
           replyPlaceholderInput.addEventListener('input', () => {
             editorBlocks[idx].placeholder = replyPlaceholderInput.value;
+            scheduleAutoSync(800);
           });
         }
         const replyBtnTextInput = card.querySelector('.reply-btn-text-input');
         if (replyBtnTextInput) {
           replyBtnTextInput.addEventListener('input', () => {
             editorBlocks[idx].buttonText = replyBtnTextInput.value;
+            scheduleAutoSync(800);
           });
         }
       });
@@ -913,6 +998,7 @@
           text: ''
         });
         renderizarCardsEditor();
+        scheduleAutoSync(150);
         setTimeout(() => {
           editorBlocksList.scrollTop = editorBlocksList.scrollHeight;
           const lastCard = editorBlocksList.querySelector('.editor-block-card:last-child textarea');
@@ -934,6 +1020,7 @@
           tape: 'tape-top'
         });
         renderizarCardsEditor();
+        scheduleAutoSync(150);
         setTimeout(() => {
           editorBlocksList.scrollTop = editorBlocksList.scrollHeight;
         }, 50);
@@ -964,6 +1051,7 @@
           buttonText: 'Enviar Resposta'
         });
         renderizarCardsEditor();
+        scheduleAutoSync(150);
         setTimeout(() => {
           editorBlocksList.scrollTop = editorBlocksList.scrollHeight;
         }, 50);
@@ -976,6 +1064,7 @@
         if (confirm('Deseja restaurar o modelo padrão de texto e fotos? As alterações não salvas serão substituídas.')) {
           editorBlocks = JSON.parse(JSON.stringify(DEFAULT_LETTER_BLOCKS));
           renderizarCardsEditor();
+          scheduleAutoSync(200);
         }
       };
     }
@@ -1029,6 +1118,7 @@
         quickImportPanel.style.display = 'none';
         quickImportTextarea.value = '';
         renderizarCardsEditor();
+        scheduleAutoSync(200);
         showAdminToast('Parágrafos importados com sucesso!');
       };
     }
@@ -1036,22 +1126,16 @@
     // Salvar e Publicar
     if (btnSaveLetter) {
       btnSaveLetter.onclick = async () => {
+        if (autoSyncTimer) {
+          clearTimeout(autoSyncTimer);
+          autoSyncTimer = null;
+        }
         btnSaveLetter.disabled = true;
         btnSaveLetter.innerHTML = 'Salvando...';
 
         try {
-          const ok = await saveLetterContent(currentSessionId, editorBlocks);
+          const ok = await executarSincronizacaoCarta(true);
           if (ok) {
-            showAdminToast('Carta salva e atualizada com sucesso!');
-
-            // Atualiza imediatamente o espelho do iframe
-            if (mirrorIframe && mirrorIframe.contentWindow) {
-              mirrorIframe.contentWindow.postMessage({
-                type: 'LETTER_CONTENT_UPDATED',
-                blocks: editorBlocks
-              }, '*');
-            }
-
             fecharEditor();
           } else {
             alert('Não foi possível salvar no Firebase. Verifique a conexão.');
